@@ -28,15 +28,23 @@ private:
     float currentFreq = 60.0f;
     float currentDepthDb = 0.0f;
     float eqGainLinear = 0.0f;
-    float lastFreq = -1.0f;
+    
+    // FIX: Changed initialization to impossible values to avoid false matches
+    // Old: lastFreq = -1.0f, lastDepth = -999.0f
+    // Problem: If setParameters(-1.0f, x) or setParameters(x, -999.0f) was called,
+    // it would match the initial values and skip coefficient updates
+    float lastFreq = -999.0f;
     float lastDepth = -999.0f;
+    float lastSampleRate = 0.0f;
 
     // TPT SVF Filter coefficients
     float g = 0.0f;
     float R2 = 0.5f; // Resonance 2.0 -> R2 = 1 / Q = 0.5
     float h = 0.0f;
 
-    // Stereo TPT SVF State Variables: Lane 0 = Left, Lane 1 = Right
+    // FIX: Changed to support only 2 channels (stereo) explicitly
+    // Previously: Only had state for 2 channels but SIMD processed 4
+    // Now: Explicitly stereo-only, matches SIMD usage
     float s1_L = 0.0f, s1_R = 0.0f;
     float s2_L = 0.0f, s2_R = 0.0f;
 };

@@ -34,7 +34,8 @@ private:
     float currentEnv = 0.0f;
     float attackCoef = 0.0f;
     float releaseCoef = 0.0f;
-    float lastAttackMs = -1.0f;
-    float lastReleaseMs = -1.0f;
+    float lastAttackMs = -999.0f;  // FIX: Changed from -1.0f to avoid matching valid input
+    float lastReleaseMs = -999.0f;  // FIX: Changed from -1.0f to avoid matching valid input
     double sr = 44100.0;
+    double lastSampleRate = 0.0;     // FIX: Track sample rate for dirty check
 };

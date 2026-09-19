@@ -354,7 +354,12 @@ void FreakPhaseAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, ju
     float attMs = (paramCache.envAttack != nullptr) ? paramCache.envAttack->load(std::memory_order_relaxed) : 2.0f;
     float relMs = (paramCache.envRelease != nullptr) ? paramCache.envRelease->load(std::memory_order_relaxed) : 100.0f;
 
-    envFollower.setTimeConstants(attMs, relMs);
+    // FIX: Only update envelope follower coefficients when parameters change
+    if (dspDirtyFlags.envelopeFollowerDirty)
+    {
+        envFollower.setTimeConstants(attMs, relMs);
+        dspDirtyFlags.envelopeFollowerDirty = false;
+    }
 
     int latMode = (paramCache.latencyMode != nullptr) ? juce::roundToInt(paramCache.latencyMode->load(std::memory_order_relaxed)) : 1;
     if (latMode != activeLatencyMode)
@@ -542,10 +547,25 @@ void FreakPhaseAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, ju
     if (isTimelineCaptureActive.load(std::memory_order_relaxed) && !isNonRealtime())
         timelineFifo.write(trackABuffer.getReadPointer(0), trackBBuffer.getReadPointer(0), numSamples, transport.samplePosition);
 
-    // 6. Update Filter Parameters
-    dynEq.setParameters(dynEqFreq, dynEqDepth);
-    phaseSub.setBaseRotation(subRot, dynEqFreq);
-    phaseHigh.setBaseRotation(highRot, dynEqFreq * 2.0f);
+    // 6. Update Filter Parameters with dirty flag optimization
+    // FIX: Only update coefficients when parameters change
+    if (dspDirtyFlags.dynEqDirty)
+    {
+        dynEq.setParameters(dynEqFreq, dynEqDepth);
+        dspDirtyFlags.dynEqDirty = false;
+    }
+    
+    if (dspDirtyFlags.phaseSubDirty)
+    {
+        phaseSub.setBaseRotation(subRot, dynEqFreq);
+        dspDirtyFlags.phaseSubDirty = false;
+    }
+    
+    if (dspDirtyFlags.phaseHighDirty)
+    {
+        phaseHigh.setBaseRotation(highRot, dynEqFreq * 2.0f);
+        dspDirtyFlags.phaseHighDirty = false;
+    }
 
     // 7. Sidechain Envelope Extraction from Track B
     const float* trackB_L = trackBBuffer.getReadPointer(0);
@@ -639,8 +659,9 @@ void FreakPhaseAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, ju
                     subDelMs  = (sbDelay / static_cast<float>(currentSampleRate.load(std::memory_order_relaxed))) * 1000.0f;
                     smoothedSubFlipGain.setTargetValue(sbPolarity ? -1.0f : 1.0f);
                     // Re-compute filter coefficients for this sub-block
-                    dynEq.setParameters(dynEqFreq, dynEqDepth);
-                    phaseSub.setBaseRotation(subRot, dynEqFreq);
+                    // FIX: Mark as dirty so the main dirty flag check will update it
+                    dspDirtyFlags.dynEqDirty = true;
+                    dspDirtyFlags.phaseSubDirty = true;
                 }
             }
 
