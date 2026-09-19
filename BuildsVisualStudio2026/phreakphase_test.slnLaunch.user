@@ -1,0 +1,23 @@
+[
+  {
+    "Name": "Nowy Profil",
+    "Projects": [
+      {
+        "Path": "phreakphase_test_StandalonePlugin.vcxproj",
+        "Action": "StartWithoutDebugging"
+      },
+      {
+        "Path": "phreakphase_test_VST3.vcxproj",
+        "Action": "StartWithoutDebugging"
+      },
+      {
+        "Path": "phreakphase_test_SharedCode.vcxproj",
+        "Action": "StartWithoutDebugging"
+      },
+      {
+        "Path": "phreakphase_test_VST3ManifestHelper.vcxproj",
+        "Action": "StartWithoutDebugging"
+      }
+    ]
+  }
+]

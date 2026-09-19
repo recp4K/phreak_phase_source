@@ -1,0 +1,46 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 11.00
+# Visual Studio Version 18
+
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "phreakphase_test - Standalone Plugin", "phreakphase_test_StandalonePlugin.vcxproj", "{9E754213-C371-A7F0-D264-8F301202B6A2}"
+	ProjectSection(ProjectDependencies) = postProject
+		{15F3E936-1AD5-9813-F097-A89DF998E174} = {15F3E936-1AD5-9813-F097-A89DF998E174}
+	EndProjectSection
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "phreakphase_test - VST3", "phreakphase_test_VST3.vcxproj", "{97AD55BD-CCA7-EA5B-A394-EFB3A8661101}"
+	ProjectSection(ProjectDependencies) = postProject
+		{15F3E936-1AD5-9813-F097-A89DF998E174} = {15F3E936-1AD5-9813-F097-A89DF998E174}
+		{7784EC00-4406-CFA9-9CB2-F0F741027D26} = {7784EC00-4406-CFA9-9CB2-F0F741027D26}
+	EndProjectSection
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "phreakphase_test - Shared Code", "phreakphase_test_SharedCode.vcxproj", "{15F3E936-1AD5-9813-F097-A89DF998E174}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "phreakphase_test - VST3 Manifest Helper", "phreakphase_test_VST3ManifestHelper.vcxproj", "{7784EC00-4406-CFA9-9CB2-F0F741027D26}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|x64 = Debug|x64
+		Release|x64 = Release|x64
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{97AD55BD-CCA7-EA5B-A394-EFB3A8661101}.Debug|x64.ActiveCfg = Debug|x64
+		{97AD55BD-CCA7-EA5B-A394-EFB3A8661101}.Debug|x64.Build.0 = Debug|x64
+		{97AD55BD-CCA7-EA5B-A394-EFB3A8661101}.Release|x64.ActiveCfg = Release|x64
+		{97AD55BD-CCA7-EA5B-A394-EFB3A8661101}.Release|x64.Build.0 = Release|x64
+		{9E754213-C371-A7F0-D264-8F301202B6A2}.Debug|x64.ActiveCfg = Debug|x64
+		{9E754213-C371-A7F0-D264-8F301202B6A2}.Debug|x64.Build.0 = Debug|x64
+		{9E754213-C371-A7F0-D264-8F301202B6A2}.Release|x64.ActiveCfg = Release|x64
+		{9E754213-C371-A7F0-D264-8F301202B6A2}.Release|x64.Build.0 = Release|x64
+		{15F3E936-1AD5-9813-F097-A89DF998E174}.Debug|x64.ActiveCfg = Debug|x64
+		{15F3E936-1AD5-9813-F097-A89DF998E174}.Debug|x64.Build.0 = Debug|x64
+		{15F3E936-1AD5-9813-F097-A89DF998E174}.Release|x64.ActiveCfg = Release|x64
+		{15F3E936-1AD5-9813-F097-A89DF998E174}.Release|x64.Build.0 = Release|x64
+		{7784EC00-4406-CFA9-9CB2-F0F741027D26}.Debug|x64.ActiveCfg = Debug|Win32
+		{7784EC00-4406-CFA9-9CB2-F0F741027D26}.Debug|x64.Build.0 = Debug|Win32
+		{7784EC00-4406-CFA9-9CB2-F0F741027D26}.Release|x64.ActiveCfg = Release|Win32
+		{7784EC00-4406-CFA9-9CB2-F0F741027D26}.Release|x64.Build.0 = Release|Win32
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal
