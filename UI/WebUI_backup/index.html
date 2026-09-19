@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>FREAK PHASE V2</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="app" class="view-advanced">
+    <!-- TOP HEADER -->
+    <header class="cyber-header">
+      <div class="header-left">
+        <div class="brand-badge">
+          <span class="ascii-logo">[ FP//V2 ]</span>
+          <span class="brand-title">FREAK PHASE</span>
+        </div>
+        <div class="vu-meters">
+          <div class="vu-channel">
+            <span class="vu-label">TRK_A (KICK)</span>
+            <div class="meter-bar"><div class="meter-fill" id="meterA"></div></div>
+          </div>
+          <div class="vu-channel">
+            <span class="vu-label">TRK_B (BASS)</span>
+            <div class="meter-bar"><div class="meter-fill" id="meterB"></div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="header-center">
+        <div class="preset-strip">
+          <button class="preset-nav-btn" id="prevPreset" title="Previous Preset">&lt;</button>
+          <select id="presetSelect" class="preset-dropdown">
+            <option value="0">01 // DEFAULT KICK + SUB</option>
+            <option value="1">02 // 808 LOW END GLUE</option>
+            <option value="2">03 // PUNCHY TECHNO 135BPM</option>
+            <option value="3">04 // SURGICAL SUB SLIP</option>
+            <option value="4">05 // HIGH FREQ TRANSIENT LOCK</option>
+          </select>
+          <button class="preset-nav-btn" id="nextPreset" title="Next Preset">&gt;</button>
+          <button class="cyber-pill-btn" id="abCompareBtn">A / B</button>
+        </div>
+      </div>
+
+      <div class="header-right">
+        <div class="mode-toggles">
+          <div class="toggle-group" id="paradigmGroup">
+            <button class="mode-btn active" data-paradigm="realtime">REAL-TIME</button>
+            <button class="mode-btn" data-paradigm="timeline">TIMELINE</button>
+          </div>
+          <div class="toggle-group" id="complexityGroup">
+            <button class="mode-btn" data-view="simple">SIMPLE</button>
+            <button class="mode-btn active" data-view="advanced">ADVANCED</button>
+          </div>
+        </div>
+        <button class="sys-terminal-trigger" id="sysTerminalBtn" title="System Info & Guide">[ ? / SYS ]</button>
+      </div>
+    </header>
+
+    <!-- MAIN ARENA -->
+    <main class="viewport-arena">
+      <!-- SIMPLE VIEW CONTAINER -->
+      <section class="simple-container" id="simpleView">
+        <div class="simple-hero-wrapper">
+          <div class="hero-button-aura">
+            <div class="dither-orbit-ring"></div>
+            <button class="magnetic-hero-btn" id="simpleSmartAlignBtn">
+              <span class="btn-scanline"></span>
+              <span class="btn-text-main">SMART ALIGN</span>
+              <span class="btn-text-status" id="simpleAlignStatus">// READY //</span>
+            </button>
+          </div>
+
+          <div class="simple-correlation-gauge">
+            <div class="gauge-label">PEARSON PHASE CORRELATION</div>
+            <div class="gauge-meter-wrapper">
+              <div class="gauge-scale">
+                <span>-1.0</span><span>0.0</span><span>+1.0</span>
+              </div>
+              <div class="gauge-track">
+                <div class="gauge-needle" id="simpleCorrelationNeedle"></div>
+              </div>
+            </div>
+            <div class="gauge-value" id="simpleCorrelationText">+0.00 CORR</div>
+          </div>
+        </div>
+
+        <div class="simple-macro-deck">
+          <div class="macro-card">
+            <div class="cyber-knob" data-param="ALIGN_MACRO" data-min="0" data-max="100" data-default="100" data-unit="%">
+              <div class="knob-ring"></div>
+              <div class="knob-body"><div class="knob-pointer"></div></div>
+            </div>
+            <span class="macro-label">ALIGN AMOUNT</span>
+            <span class="macro-readout" id="readout_ALIGN_MACRO">100 %</span>
+          </div>
+
+          <div class="macro-card">
+            <div class="cyber-knob" data-param="GLUE_DRIVE" data-min="0" data-max="100" data-default="0" data-unit="%">
+              <div class="knob-ring"></div>
+              <div class="knob-body"><div class="knob-pointer"></div></div>
+            </div>
+            <span class="macro-label">FREAK GLUE</span>
+            <span class="macro-readout" id="readout_GLUE_DRIVE">0 %</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- ADVANCED VIEW CONTAINER -->
+      <section class="advanced-container" id="advancedView">
+        <!-- TOP VISUALIZER HERO AREA -->
+        <div class="hero-visualizer-area">
+          <div class="scope-viewport" id="scopeViewport">
+            <canvas id="scopeCanvas" width="860" height="340"></canvas>
+            <div class="scope-overlay-hud">
+              <div class="hud-tag hud-trk-a"><span class="tag-marker">■</span> TRK_A: KICK</div>
+              <div class="hud-tag hud-trk-b"><span class="tag-marker">:::</span> TRK_B: BASS (PHASE WARPED)</div>
+              <div class="hud-tag hud-correlation" id="scopeCorrBadge">CORR: +0.00</div>
+              <div class="hud-tag hud-delta" id="scopeDeltaBadge">DELAY: 0.00ms</div>
+            </div>
+            <div class="timeline-scrub-bar" id="timelineScrubBar">
+              <div class="scrub-handle" id="scrubHandle"></div>
+            </div>
+          </div>
+
+          <div class="phase-wheel-overlay" id="phaseWheelContainer">
+            <div class="wheel-header">
+              <span class="wheel-title">POLAR VECTORSCOPE</span>
+              <button class="wheel-collapse-btn" id="wheelCollapseBtn" title="Toggle Size">_</button>
+            </div>
+            <canvas id="phaseWheelCanvas" width="220" height="220"></canvas>
+            <div class="wheel-telemetry">
+              <span id="wheelAngleText">ANGLE: 0.0°</span>
+              <span id="wheelCoherenceText">LOCK: 0%</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- BOTTOM CONTROL DECK: 4 UNIFIED CARDS -->
+        <div class="bottom-control-deck">
+          <!-- CARD 1: CROSSOVER -->
+          <div class="cyber-card card-crossover">
+            <div class="card-header">
+              <span class="card-num">01 //</span>
+              <span class="card-title">SUB CROSSOVER</span>
+            </div>
+            <div class="card-body">
+              <div class="cyber-knob-wrapper">
+                <div class="cyber-knob" data-param="CROSSOVER_FREQ" data-min="40" data-max="300" data-default="90" data-unit="Hz">
+                  <div class="knob-ring"></div>
+                  <div class="knob-body"><div class="knob-pointer"></div></div>
+                </div>
+                <span class="knob-label">FREQUENCY</span>
+                <span class="knob-val" id="readout_CROSSOVER_FREQ">90 Hz</span>
+              </div>
+              <div class="card-extra-controls">
+                <button class="cyber-toggle-btn active" id="subSplitToggle">SUB SPLIT [LR4]</button>
+                <div class="pitch-badge">
+                  <span class="pitch-label">PITCH TRACK</span>
+                  <span class="pitch-value" id="pitchNoteText">F1 - 43.7 Hz</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- CARD 2: SUB BAND -->
+          <div class="cyber-card card-sub">
+            <div class="card-header">
+              <span class="card-num">02 //</span>
+              <span class="card-title">SUB BAND [0 - X]</span>
+            </div>
+            <div class="card-body knobs-trio">
+              <div class="cyber-knob-wrapper">
+                <div class="cyber-knob" data-param="SUB_ROTATE" data-min="-180" data-max="180" data-default="0" data-unit="°">
+                  <div class="knob-ring"></div>
+                  <div class="knob-body"><div class="knob-pointer"></div></div>
+                </div>
+                <span class="knob-label">ROTATE</span>
+                <span class="knob-val" id="readout_SUB_ROTATE">0.0°</span>
+              </div>
+              <div class="cyber-knob-wrapper">
+                <div class="cyber-knob" data-param="SUB_DELAY" data-min="-20" data-max="20" data-default="0" data-unit="ms">
+                  <div class="knob-ring"></div>
+                  <div class="knob-body"><div class="knob-pointer"></div></div>
+                </div>
+                <span class="knob-label">DELAY</span>
+                <span class="knob-val" id="readout_SUB_DELAY">0.00ms</span>
+              </div>
+              <div class="cyber-knob-wrapper">
+                <div class="cyber-knob" data-param="SUB_DYN_AMOUNT" data-min="0" data-max="100" data-default="0" data-unit="%">
+                  <div class="knob-ring"></div>
+                  <div class="knob-body"><div class="knob-pointer"></div></div>
+                </div>
+                <span class="knob-label">DYN CUT</span>
+                <span class="knob-val" id="readout_SUB_DYN_AMOUNT">0 %</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- CARD 3: HIGH BAND -->
+          <div class="cyber-card card-high">
+            <div class="card-header">
+              <span class="card-num">03 //</span>
+              <span class="card-title">HIGH BAND [X - 20k]</span>
+            </div>
+            <div class="card-body knobs-trio">
+              <div class="cyber-knob-wrapper">
+                <div class="cyber-knob" data-param="HIGH_ROTATE" data-min="-180" data-max="180" data-default="0" data-unit="°">
+                  <div class="knob-ring"></div>
+                  <div class="knob-body"><div class="knob-pointer"></div></div>
+                </div>
+                <span class="knob-label">ROTATE</span>
+                <span class="knob-val" id="readout_HIGH_ROTATE">0.0°</span>
+              </div>
+              <div class="cyber-knob-wrapper">
+                <div class="cyber-knob" data-param="HIGH_DELAY" data-min="-20" data-max="20" data-default="0" data-unit="ms">
+                  <div class="knob-ring"></div>
+                  <div class="knob-body"><div class="knob-pointer"></div></div>
+                </div>
+                <span class="knob-label">DELAY</span>
+                <span class="knob-val" id="readout_HIGH_DELAY">0.00ms</span>
+              </div>
+              <div class="cyber-knob-wrapper">
+                <div class="cyber-knob" data-param="HIGH_DYN_AMOUNT" data-min="0" data-max="100" data-default="0" data-unit="%">
+                  <div class="knob-ring"></div>
+                  <div class="knob-body"><div class="knob-pointer"></div></div>
+                </div>
+                <span class="knob-label">DYN CUT</span>
+                <span class="knob-val" id="readout_HIGH_DYN_AMOUNT">0 %</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- CARD 4: DYNAMICS & FREAK GLUE -->
+          <div class="cyber-card card-dynamics">
+            <div class="card-header">
+              <span class="card-num">04 //</span>
+              <span class="card-title">DYNAMICS & GLUE</span>
+            </div>
+            <div class="card-body knobs-trio">
+              <div class="cyber-knob-wrapper">
+                <div class="cyber-knob" data-param="ENV_ATTACK" data-min="0.1" data-max="50" data-default="2.0" data-unit="ms">
+                  <div class="knob-ring"></div>
+                  <div class="knob-body"><div class="knob-pointer"></div></div>
+                </div>
+                <span class="knob-label">ATTACK</span>
+                <span class="knob-val" id="readout_ENV_ATTACK">2.0 ms</span>
+              </div>
+              <div class="cyber-knob-wrapper">
+                <div class="cyber-knob" data-param="ENV_RELEASE" data-min="10" data-max="500" data-default="120" data-unit="ms">
+                  <div class="knob-ring"></div>
+                  <div class="knob-body"><div class="knob-pointer"></div></div>
+                </div>
+                <span class="knob-label">RELEASE</span>
+                <span class="knob-val" id="readout_ENV_RELEASE">120 ms</span>
+              </div>
+              <div class="cyber-knob-wrapper">
+                <div class="cyber-knob" data-param="GLUE_DRIVE" data-min="0" data-max="100" data-default="0" data-unit="%">
+                  <div class="knob-ring"></div>
+                  <div class="knob-body"><div class="knob-pointer"></div></div>
+                </div>
+                <span class="knob-label">FREAK GLUE</span>
+                <span class="knob-val" id="readout_GLUE_DRIVE_ADV">0 %</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- HIDDEN SYS TERMINAL DRAWER -->
+    <aside class="sys-terminal-drawer" id="sysTerminalDrawer">
+      <div class="terminal-header">
+        <span class="term-title">// SYS_MAINFRAME: FREAK PHASE ARCHITECTURE //</span>
+        <button class="term-close-btn" id="termCloseBtn">[X] CLOSE</button>
+      </div>
+      <div class="terminal-body">
+        <p class="term-code">> LOADING SYSTEM MATHEMATICS & PROTOCOLS...</p>
+        <div class="term-section">
+          <h4>01 // SUMMING BUS ROUTING</h4>
+          <p>Freak Phase V2 is a 4-in / 2-out Summing Bus plugin. Route your Kick to Input 1/2 (Track A) and Bass to Input 3/4 (Track B). The plugin aligns them and outputs a single summed low-end signal.</p>
+        </div>
+        <div class="term-section">
+          <h4>02 // GCC-PHAT TIME-DELAY ESTIMATION</h4>
+          <p>Phase cancellation is solved using instantaneous Generalized Cross-Correlation with Phase Transform normalization, identifying the optimal sub-sample delay offset in an FFT pass.</p>
+        </div>
+        <div class="term-section">
+          <h4>03 // TIME-BENDING TPT ALL-PASS CASCADE</h4>
+          <p>Instead of standard linear delays that cause smearing across harmonics, we employ 2-stage Topology-Preserving Transform (TPT) All-Pass filters that rotate low frequencies dynamically without altering the upper transient punch.</p>
+        </div>
+        <div class="term-section">
+          <h4>04 // KEYBOARD SHORTCUTS</h4>
+          <p><span class="term-key">Shift + Drag</span> Fine Parameter Adjustment<br>
+             <span class="term-key">Double Click</span> Reset Knob to Default<br>
+             <span class="term-key">?</span> Toggle this System Terminal</p>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
