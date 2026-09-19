@@ -23,7 +23,8 @@ struct SegmentAlignmentResult
 class AutoAlignerThread : public juce::Thread
 {
 public:
-    static constexpr int fftOrder = 13; // 8192 points
+    // FIX: Reduced FFT size for better performance (2048 points is sufficient for sub-bass alignment)
+    static constexpr int fftOrder = 11; // 2048 points (was 13 = 8192)
     static constexpr int fftSize = 1 << fftOrder;
 
     AutoAlignerThread(juce::AudioBuffer<float>& buffer, std::atomic<int>& writeIdx, std::atomic<double>& sampleRate);
@@ -66,6 +67,9 @@ private:
     std::vector<float> hannWindow;
     std::vector<float> corrOutput;
     juce::AudioBuffer<float> snapshotBuffer;
+    
+    // FIX: Add mutex for thread-safe access to snapshotBuffer
+    std::mutex snapshotMutex;
     bool lastFlipState{ false };
 
     juce::int64 scanStartTimeMs{ 0 };

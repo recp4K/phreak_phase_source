@@ -100,9 +100,22 @@ FreakPhaseAudioProcessorEditor::FreakPhaseAudioProcessorEditor(FreakPhaseAudioPr
             loaderDll = parentDll;
         else
         {
-            auto devPkgDll = juce::File("G:\\JUCE\\phreakphase_test\\Builds\\VisualStudio2026\\packages\\Microsoft.Web.WebView2\\build\\native\\x64\\WebView2Loader.dll");
-            if (devPkgDll.existsAsFile())
-                loaderDll = devPkgDll;
+            // FIX: Search in standard WebView2 installation locations instead of hardcoded paths
+            auto programFilesDll = juce::File::getSpecialLocation(juce::File::SpecialLocationType::globalApplicationsDirectory)
+                .getChildFile("Microsoft").getChildFile("WebView2").getChildFile("FixedVersion")
+                .getChildFile("Runtime").getChildFile("x64").getChildFile("WebView2Loader.dll");
+            if (programFilesDll.existsAsFile())
+                loaderDll = programFilesDll;
+            else
+            {
+                // Try common development package locations
+                auto vsPackagesDll = moduleDir.getParentDirectory().getParentDirectory()
+                    .getChildFile("packages").getChildFile("Microsoft.Web.WebView2")
+                    .getChildFile("build").getChildFile("native").getChildFile("x64")
+                    .getChildFile("WebView2Loader.dll");
+                if (vsPackagesDll.existsAsFile())
+                    loaderDll = vsPackagesDll;
+            }
         }
     }
 
@@ -116,9 +129,8 @@ FreakPhaseAudioProcessorEditor::FreakPhaseAudioProcessorEditor(FreakPhaseAudioPr
         if (!baseDir.isDirectory())
             baseDir = appDir.getChildFile("Resources").getChildFile("WebUI");
         if (!baseDir.isDirectory())
-            baseDir = juce::File("G:\\JUCE\\phreakphase_test\\Source\\UI\\WebUI");
-        if (!baseDir.isDirectory())
             baseDir = appDir.getChildFile("Source").getChildFile("UI").getChildFile("WebUI");
+        // FIX: Removed hardcoded paths - use relative paths only
 
         juce::String cleanPath = path;
         if (cleanPath == "/" || cleanPath.isEmpty())
@@ -214,6 +226,26 @@ FreakPhaseAudioProcessorEditor::FreakPhaseAudioProcessorEditor(FreakPhaseAudioPr
         })
         .withEventListener("disarmTimelineLearn", [this](juce::var) {
             handleFrontendDisarmTimelineLearn();
+        })
+        // FIX: MIDI Learn event listeners
+        .withEventListener("startMidiLearn", [this](juce::var data) {
+            handleFrontendStartMidiLearn(data);
+        })
+        .withEventListener("cancelMidiLearn", [this](juce::var) {
+            handleFrontendCancelMidiLearn();
+        })
+        .withEventListener("clearMidiMappings", [this](juce::var) {
+            handleFrontendClearMidiMappings();
+        })
+        .withEventListener("getMidiMappings", [this](juce::var data) {
+            juce::var result;
+            handleFrontendGetMidiMappings(result);
+            if (webView) webView->emitEventIfBrowserIsVisible("midiMappings", result);
+        })
+        .withEventListener("getSuggestedMidiMappings", [this](juce::var data) {
+            juce::var result;
+            handleFrontendGetSuggestedMidiMappings(result);
+            if (webView) webView->emitEventIfBrowserIsVisible("suggestedMidiMappings", result);
         });
 
     setupWebView();
@@ -660,4 +692,47 @@ void FreakPhaseAudioProcessorEditor::pushWaveformEvent()
     obj->setProperty("trackA", arrA);
     obj->setProperty("trackB", arrB);
     webView->emitEventIfBrowserIsVisible("waveform", juce::var(obj));
+}
+// =============================================================================
+// FIX: MIDI Learn handlers for frontend communication
+// =============================================================================
+
+void FreakPhaseAudioProcessorEditor::handleFrontendStartMidiLearn(const juce::var& data)
+{
+    if (auto* obj = data.getDynamicObject())
+    {
+        auto paramId = obj->getProperty("paramId").toString();
+        audioProcessor.startMidiLearn(paramId);
+    }
+}
+
+void FreakPhaseAudioProcessorEditor::handleFrontendCancelMidiLearn()
+{
+    audioProcessor.cancelMidiLearn();
+}
+
+void FreakPhaseAudioProcessorEditor::handleFrontendClearMidiMappings()
+{
+    audioProcessor.clearMidiMappings();
+}
+
+void FreakPhaseAudioProcessorEditor::handleFrontendGetMidiMappings(juce::var& result)
+{
+    auto* obj = new juce::DynamicObject();
+    for (const auto& [cc, paramId] : audioProcessor.midiCCToParam)
+    {
+        obj->setProperty(juce::String(cc), juce::var(paramId));
+    }
+    result = juce::var(obj);
+}
+
+void FreakPhaseAudioProcessorEditor::handleFrontendGetSuggestedMidiMappings(juce::var& result)
+{
+    auto suggested = audioProcessor.suggestMidiMappings();
+    auto* obj = new juce::DynamicObject();
+    for (const auto& [cc, paramId] : suggested)
+    {
+        obj->setProperty(juce::String(cc), juce::var(paramId));
+    }
+    result = juce::var(obj);
 }

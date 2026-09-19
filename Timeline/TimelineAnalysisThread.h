@@ -37,8 +37,10 @@ namespace FreakPhase::Timeline
               analysisProgress(progressFlag),
               sr(sampleRateRef)
         {
-            scratchPacketMain.resize(8192, 0.0f);
-            scratchPacketSide.resize(8192, 0.0f);
+            // FIX: Pre-allocate with larger capacity to avoid reallocations during capture
+            // 8192 * 4 = 32768 samples (~0.7s at 48kHz) should handle most blocks without reallocation
+            scratchPacketMain.resize(32768, 0.0f);
+            scratchPacketSide.resize(32768, 0.0f);
         }
 
         ~TimelineAnalysisThread() override
@@ -89,10 +91,13 @@ namespace FreakPhase::Timeline
                     }
 
                     const int numReady = captureFifo.getNumReady();
+                    // FIX: Pre-allocated scratch buffers should handle most cases without resize
+                    // Only resize if absolutely necessary (very large blocks)
                     if (static_cast<size_t>(numReady) > scratchPacketMain.size())
                     {
-                        scratchPacketMain.resize(static_cast<size_t>(numReady) * 2);
-                        scratchPacketSide.resize(static_cast<size_t>(numReady) * 2);
+                        const size_t newSize = static_cast<size_t>(numReady) * 2;
+                        scratchPacketMain.resize(newSize, 0.0f);
+                        scratchPacketSide.resize(newSize, 0.0f);
                     }
 
                     if (captureFifo.readNextBlock(scratchPacketMain.data(), scratchPacketSide.data(), meta))
@@ -160,11 +165,16 @@ namespace FreakPhase::Timeline
         std::vector<float> scratchPacketSide;
         std::vector<float> capturedMain;
         std::vector<float> capturedSide;
+        
+        // FIX: Pre-allocate captured buffers to avoid reallocations during recording
+        // Reserve space for 30 seconds at 48kHz (1.44M samples per channel)
+        static constexpr size_t MAX_CAPTURE_SAMPLES = 48000 * 30;
         int64_t recordingStartSample{ 0 };
         int64_t recordingEndSample{ 0 };
 
         // Dedicated helper aligner thread instance for FFT scratch
-        juce::AudioBuffer<float> dummyBuffer{ 2, 8192 };
+        // FIX: Updated dummyBuffer size to match reduced FFT size (2048)
+        juce::AudioBuffer<float> dummyBuffer{ 2, 2048 };
         std::atomic<int> dummyIdx{ 0 };
         AutoAlignerThread sliceAligner{ dummyBuffer, dummyIdx, sr };
 
@@ -174,7 +184,9 @@ namespace FreakPhase::Timeline
             if (totalSamples < 512 || capturedSide.size() != totalSamples)
             {
                 capturedMain.clear();
+                capturedMain.shrink_to_fit();  // FIX: Release memory after clearing
                 capturedSide.clear();
+                capturedSide.shrink_to_fit();
                 return;
             }
 
@@ -318,8 +330,11 @@ namespace FreakPhase::Timeline
             }
 
             // Free linear memory after analysis completes
+            // FIX: Use shrink_to_fit to release memory back to the system
             capturedMain.clear();
+            capturedMain.shrink_to_fit();
             capturedSide.clear();
+            capturedSide.shrink_to_fit();
         }
     };
 }

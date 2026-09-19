@@ -101,9 +101,34 @@ public:
                     // We only need up to MIDI note 60 (C4 = 261.63Hz)
                 };
 
-                int bestNote = 12; // C0
+                // FIX: Use binary search instead of linear O(n) search for better performance
+                // Binary search on the sorted midiToFreq array (notes 12-60)
+                int low = 12, high = 60;
+                int bestNote = 12; // C0 as fallback
                 float minDiff = 9999.0f;
-                for (int n = 12; n <= 60; ++n) {
+                
+                while (low <= high) {
+                    int mid = (low + high) / 2;
+                    float diff = std::abs(detectedHz - midiToFreq[mid]);
+                    
+                    if (diff < minDiff) {
+                        minDiff = diff;
+                        bestNote = mid;
+                    }
+                    
+                    if (midiToFreq[mid] < detectedHz) {
+                        low = mid + 1;
+                    } else if (midiToFreq[mid] > detectedHz) {
+                        high = mid - 1;
+                    } else {
+                        bestNote = mid; // Exact match
+                        break;
+                    }
+                }
+                
+                // Also check immediate neighbors for potential better match
+                // (binary search might miss due to non-linear frequency spacing)
+                for (int n = std::max(12, bestNote - 2); n <= std::min(60, bestNote + 2); ++n) {
                     float diff = std::abs(detectedHz - midiToFreq[n]);
                     if (diff < minDiff) {
                         minDiff = diff;

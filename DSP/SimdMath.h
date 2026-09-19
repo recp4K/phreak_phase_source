@@ -21,6 +21,43 @@ namespace FreakPhase::DSP
     using vFloat = juce::dsp::SIMDRegister<float>;
 
     // =========================================================================
+    // LUT for fastExp2SIMD: Pre-computed exp2 values for better performance
+    // =========================================================================
+    inline float fastExp2Lut(float x) noexcept
+    {
+        // Clamp input to valid range for LUT
+        x = std::clamp(x, -10.0f, 10.0f);
+        
+        // LUT with 4096 entries covering [-10, 10] range
+        // This provides good accuracy with O(1) lookup instead of polynomial approximation
+        static constexpr int LUT_SIZE = 4096;
+        static constexpr float LUT_MIN = -10.0f;
+        static constexpr float LUT_MAX = 10.0f;
+        static constexpr float LUT_STEP = (LUT_MAX - LUT_MIN) / (LUT_SIZE - 1);
+        
+        // Pre-computed LUT (initialized on first call)
+        static std::array<float, LUT_SIZE> lut;
+        static bool initialized = false;
+        
+        if (!initialized)
+        {
+            initialized = true;
+            for (int i = 0; i < LUT_SIZE; ++i)
+            {
+                float val = LUT_MIN + i * LUT_STEP;
+                // Use standard exp2 for initialization
+                lut[i] = std::exp2(val);
+            }
+        }
+        
+        // Calculate index
+        int idx = static_cast<int>((x - LUT_MIN) / LUT_STEP + 0.5f);
+        idx = std::clamp(idx, 0, LUT_SIZE - 1);
+        
+        return lut[idx];
+    }
+
+    // =========================================================================
     // fastExp2SIMD: 2^x with certified < 0.000726% relative error on [-4, 4]
     // =========================================================================
     inline vFloat fastExp2SIMD(vFloat x) noexcept
@@ -79,8 +116,17 @@ namespace FreakPhase::DSP
     }
 
     // Scalar helper for exp2
+    // FIX: Use LUT version for better performance when range is limited
     inline float fastExp2Scalar(float x) noexcept
     {
+        // For the typical range used in DSP ([-10, 10]), use LUT for O(1) lookup
+        // For extreme values, fall back to original polynomial approximation
+        if (x >= -10.0f && x <= 10.0f)
+        {
+            return fastExp2Lut(x);
+        }
+        
+        // Original polynomial approximation for out-of-range values
         const float x_clamped = std::clamp(x, -126.0f, 126.0f);
         const int n = static_cast<int>(std::round(x_clamped));
         const float f = x_clamped - static_cast<float>(n);

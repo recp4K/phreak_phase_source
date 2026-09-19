@@ -35,6 +35,9 @@ void AutoAlignerThread::prepare()
     lastFlipState = false;
     scanStartTimeMs = 0;
 
+    // FIX: Lock mutex when accessing snapshotBuffer to prevent race with run()
+    std::lock_guard<std::mutex> lock(snapshotMutex);
+    
     fftBufMain.resize(fftSize, { 0.0f, 0.0f });
     fftBufSc.resize(fftSize, { 0.0f, 0.0f });
     fftScratch.resize(fftSize, { 0.0f, 0.0f });
@@ -88,6 +91,9 @@ void AutoAlignerThread::run()
 
         auto copySnapshot = [&](int offsetFromWrite)
         {
+            // FIX: Lock mutex to prevent race condition with prepare() or other threads
+            std::lock_guard<std::mutex> lock(snapshotMutex);
+            
             int readIdx = currentWriteIdx - offsetFromWrite;
             while (readIdx < 0)
                 readIdx += capSize;
@@ -115,12 +121,13 @@ void AutoAlignerThread::run()
         float peakSc = snapshotBuffer.getMagnitude(1, 0, numSamplesToRead);
 
         // Dynamic transient search: if recent window is quiet, look back across recent history (up to 1s)
+        // FIX: Use larger step size (4096 instead of 2048) for faster search with reduced FFT size
         if (peakMain < 0.002f || peakSc < 0.002f)
         {
             int bestOffset = numSamplesToRead;
             float maxCombinedEnergy = peakMain * peakSc;
             const int maxSearchBack = std::min(capSize - numSamplesToRead, 48000);
-            for (int offset = numSamplesToRead + 2048; offset <= maxSearchBack; offset += 2048)
+            for (int offset = numSamplesToRead + 4096; offset <= maxSearchBack; offset += 4096)
             {
                 copySnapshot(offset);
                 float pM = snapshotBuffer.getMagnitude(0, 0, numSamplesToRead);
@@ -191,10 +198,12 @@ void AutoAlignerThread::run()
         const double srVal = sr.load(std::memory_order_relaxed);
         const float sampleRateFloat = static_cast<float>(srVal > 1000.0 ? srVal : 44100.0);
 
+        // FIX: Adjust lag search range for reduced FFT size (2048 vs 8192)
+        // With 2048 samples, we need proportionally smaller lag range
         int minLag = static_cast<int>(sampleRateFloat / 250.0f);
         int maxLag = static_cast<int>(sampleRateFloat / 30.0f);
-        minLag = juce::jlimit(1, numSamplesToRead / 4, minLag);
-        maxLag = juce::jlimit(minLag + 1, numSamplesToRead / 2, maxLag);
+        minLag = juce::jlimit(1, numSamplesToRead / 8, minLag);  // More conservative: 1/8 of buffer
+        maxLag = juce::jlimit(minLag + 1, numSamplesToRead / 4, maxLag);
 
         int searchLength = juce::jmin(numSamplesToRead - maxLag, numSamplesToRead / 2);
         float bestAutoCorr = -std::numeric_limits<float>::infinity();
