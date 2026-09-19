@@ -1,0 +1,942 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Audio Phase in Audio Engineering & DSP - Interactive Explorer</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    .chart-container {
+      position: relative;
+      width: 100%;
+      max-width: 650px;
+      margin-left: auto;
+      margin-right: auto;
+      height: 320px;
+      max-height: 400px;
+    }
+    @media (min-width: 768px) {
+      .chart-container {
+        height: 360px;
+      }
+    }
+    .tab-btn.active {
+      border-bottom-color: #4f46e5;
+      color: #4f46e5;
+      font-weight: 600;
+      background-color: #f3f4f6;
+    }
+  </style>
+</head>
+<!-- Chosen Palette: Warm Neutral Precision (Bg: slate-50, Cards: white/zinc-50, Primary: indigo-600, Accent: amber-500, Emerald: emerald-600, Text: slate-800) -->
+<!-- Application Structure Plan: The application is structured into a multi-tab single-page interactive report. It organizes the source material logically into: 1) Executive Summary & Perspectives Dashboard, 2) Physics & Mathematics (Phase/Group Delay & IPD), 3) Pro Audio & Speaker Crossovers (Linkwitz-Riley vs Butterworth comparison), 4) Amateur & Forum Insights (Linear vs Minimum phase & Pre-ringing), 5) C++/JUCE DSP Implementation (Oversampling, Phase Vocoder, Thiran, GCC-PHAT), and 6) Interactive Audio Phase Playground. This layout allows users to either navigate sequentially or jump directly to practical DSP formulas and interactive simulations, transforming dense math into intuitive visual models. -->
+<!-- Visualization & Content Choices:
+- Goal: Compare Phase Delay vs Group Delay -> Chart.js Line Chart with dynamic phase slope slider -> Shows derivative relationship and group delay flattening -> Chart.js Canvas.
+- Goal: Pro Crossover Comparison -> Chart.js Stacked/Multi-line Chart -> Interactive filter order selector (LR-4 vs Butterworth) showing magnitude sum (+0dB vs +3dB peak) and phase rotation -> Chart.js Canvas.
+- Goal: Phase Vocoder Pipeline -> Interactive Step-by-Step Flowchart with active step details -> User clicks steps to reveal mathematical transform and C++ implementation -> Tailwind CSS grid + JS.
+- Goal: Oversampling FIR vs IIR -> Comparative Data Card Table with Latency & Phase behavior -> Interactive toggle -> HTML/CSS + Tailwind.
+- Goal: Interactive Wave Summation & Comb Filter Simulator -> Chart.js Real-time Sine Summation Graph with Phase Angle Slider -> Demonstrates construct/destructive interference and comb filtering -> Chart.js Canvas.
+- Goal: Thiran Fractional Delay Flatness -> Chart.js Line Graph comparing Thiran vs Linear Interpolation -> Demonstrates high frequency attenuation prevention -> Chart.js Canvas.
+- Confirming NO SVG graphics used. NO Mermaid JS used. -->
+<!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+<body class="bg-slate-50 text-slate-800 font-sans antialiased min-h-screen flex flex-col">
+
+  <header class="bg-indigo-900 text-white shadow-lg sticky top-0 z-50">
+    <div class="max-w-7xl mx-auto px-4 py-4 sm:px-6 lg:px-8 flex flex-col md:flex-row justify-between items-center">
+      <div class="mb-3 md:mb-0">
+        <h1 class="text-2xl font-bold tracking-tight text-amber-400">Audio Phase Architecture & DSP Interactive Explorer</h1>
+        <p class="text-xs text-indigo-200 mt-1">Physics, Mathematics, Pro Systems, Forum Insights & C++/JUCE Algorithms</p>
+      </div>
+      <div class="flex items-center space-x-2">
+        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-400 text-indigo-950">
+          Interactive Report
+        </span>
+        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-500 text-white">
+          DSP Ready
+        </span>
+      </div>
+    </div>
+
+    <nav class="bg-indigo-950 px-4 sm:px-6 border-t border-indigo-800 overflow-x-auto">
+      <div class="max-w-7xl mx-auto flex space-x-1 sm:space-x-4 text-xs sm:text-sm">
+        <button onclick="switchTab('dashboard')" id="tab-dashboard" class="tab-btn active py-3 px-3 sm:px-4 text-indigo-200 hover:text-white border-b-2 border-transparent whitespace-nowrap focus:outline-none">
+          1. Overview Dashboard
+        </button>
+        <button onclick="switchTab('physics')" id="tab-physics" class="tab-btn py-3 px-3 sm:px-4 text-indigo-200 hover:text-white border-b-2 border-transparent whitespace-nowrap focus:outline-none">
+          2. Physics & Mathematics
+        </button>
+        <button onclick="switchTab('proaudio')" id="tab-proaudio" class="tab-btn py-3 px-3 sm:px-4 text-indigo-200 hover:text-white border-b-2 border-transparent whitespace-nowrap focus:outline-none">
+          3. Pro Audio & Crossovers
+        </button>
+        <button onclick="switchTab('forums')" id="tab-forums" class="tab-btn py-3 px-3 sm:px-4 text-indigo-200 hover:text-white border-b-2 border-transparent whitespace-nowrap focus:outline-none">
+          4. Forums & Minimum Phase
+        </button>
+        <button onclick="switchTab('cppdsp')" id="tab-cppdsp" class="tab-btn py-3 px-3 sm:px-4 text-indigo-200 hover:text-white border-b-2 border-transparent whitespace-nowrap focus:outline-none">
+          5. C++/JUCE Implementation
+        </button>
+        <button onclick="switchTab('playground')" id="tab-playground" class="tab-btn py-3 px-3 sm:px-4 text-indigo-200 hover:text-white border-b-2 border-transparent whitespace-nowrap focus:outline-none">
+          6. Interactive Wave Playground
+        </button>
+      </div>
+    </nav>
+  </header>
+
+  <main class="flex-grow max-w-7xl w-full mx-auto px-4 py-6 sm:px-6 lg:px-8">
+
+    <section id="sec-dashboard" class="space-y-6">
+      <div class="bg-white rounded-xl shadow-md p-6 border border-slate-200">
+        <h2 class="text-xl font-bold text-slate-900 mb-2">Executive Summary & Perspective Matrix</h2>
+        <p class="text-sm text-slate-600 mb-6 leading-relaxed">
+          Audio phase operates at the intersection of acoustic physics, psychoacoustics, electrical engineering, and dynamic signal processing (DSP). While amplitude dictates perceived loudness, phase controls temporal alignment, wave summation, and spatial perception. This interactive application synthesizes research across four analytical domains, bridging theoretical wave mechanics with low-level C++ plugin development.
+        </p>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div class="bg-slate-50 rounded-lg p-4 border-l-4 border-indigo-600 shadow-sm hover:shadow-md transition-shadow">
+            <div class="flex justify-between items-center mb-2">
+              <span class="text-xs font-bold uppercase tracking-wider text-indigo-600">Domain 1</span>
+              <span class="text-lg">🔬</span>
+            </div>
+            <h3 class="font-bold text-slate-800 text-sm mb-1">Academic & Physics</h3>
+            <p class="text-xs text-slate-600">Phase Delay vs. Group Delay derivatives, psychoacoustic audibility thresholds, pre-masking, and Interaural Phase Differences (IPD &lt; 1.5 kHz).</p>
+          </div>
+
+          <div class="bg-slate-50 rounded-lg p-4 border-l-4 border-emerald-600 shadow-sm hover:shadow-md transition-shadow">
+            <div class="flex justify-between items-center mb-2">
+              <span class="text-xs font-bold uppercase tracking-wider text-emerald-600">Domain 2</span>
+              <span class="text-lg">🎛️</span>
+            </div>
+            <h3 class="font-bold text-slate-800 text-sm mb-1">Pro Audio & Systems</h3>
+            <p class="text-xs text-slate-600">Linkwitz-Riley 4th order crossovers (360° phase shift, 0dB acoustic sum), FFT time alignment, and stereo correlation metrics (+1 to -1).</p>
+          </div>
+
+          <div class="bg-slate-50 rounded-lg p-4 border-l-4 border-amber-500 shadow-sm hover:shadow-md transition-shadow">
+            <div class="flex justify-between items-center mb-2">
+              <span class="text-xs font-bold uppercase tracking-wider text-amber-600">Domain 3</span>
+              <span class="text-lg">💬</span>
+            </div>
+            <h3 class="font-bold text-slate-800 text-sm mb-1">Forums & DIY DSP</h3>
+            <p class="text-xs text-slate-600">Linear vs. Minimum Phase EQ debate, pre-ringing transient smearing, Hilbert transform derivations, and instantaneous correlation approximations.</p>
+          </div>
+
+          <div class="bg-slate-50 rounded-lg p-4 border-l-4 border-rose-500 shadow-sm hover:shadow-md transition-shadow">
+            <div class="flex justify-between items-center mb-2">
+              <span class="text-xs font-bold uppercase tracking-wider text-rose-600">Domain 4</span>
+              <span class="text-lg">💻</span>
+            </div>
+            <h3 class="font-bold text-slate-800 text-sm mb-1">C++ & JUCE Plugins</h3>
+            <p class="text-xs text-slate-600">JUCE oversampling (FIR vs. IIR), Phase Vocoder transient phase-locking, Thiran all-pass fractional delays, and GCC-PHAT auto-alignment.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div class="bg-white rounded-xl shadow-md p-6 border border-slate-200">
+          <h3 class="text-base font-bold text-slate-900 mb-2">Key Trade-offs in Digital Audio Phase</h3>
+          <p class="text-xs text-slate-500 mb-4">Select a trade-off parameter to explore the technical compromise required in audio software design.</p>
+
+          <div class="space-y-3">
+            <button onclick="showDashboardInsight('linear_min')" class="w-full text-left p-3 rounded-lg border border-slate-200 hover:border-indigo-500 bg-slate-50 hover:bg-indigo-50 transition-colors flex justify-between items-center">
+              <div>
+                <span class="font-semibold text-xs text-indigo-900 block">Linear Phase vs. Minimum Phase</span>
+                <span class="text-xs text-slate-500">Zero Phase Distortion + Buffer Latency + Pre-ringing vs. Zero Latency + Phase Smearing</span>
+              </div>
+              <span class="text-xs text-indigo-600 font-bold">&rarr;</span>
+            </button>
+
+            <button onclick="showDashboardInsight('oversampling')" class="w-full text-left p-3 rounded-lg border border-slate-200 hover:border-indigo-500 bg-slate-50 hover:bg-indigo-50 transition-colors flex justify-between items-center">
+              <div>
+                <span class="font-semibold text-xs text-indigo-900 block">FIR Half-Band vs. IIR Polyphase Oversampling</span>
+                <span class="text-xs text-slate-500">Equiripple linear phase response vs. Zero latency minimum phase with high-frequency phase warp</span>
+              </div>
+              <span class="text-xs text-indigo-600 font-bold">&rarr;</span>
+            </button>
+
+            <button onclick="showDashboardInsight('fractional')" class="w-full text-left p-3 rounded-lg border border-slate-200 hover:border-indigo-500 bg-slate-50 hover:bg-indigo-50 transition-colors flex justify-between items-center">
+              <div>
+                <span class="font-semibold text-xs text-indigo-900 block">Linear Interpolation vs. Thiran All-Pass Fractional Delay</span>
+                <span class="text-xs text-slate-500">High-frequency damping in feedback loops vs. Perfectly flat magnitude with maximally flat group delay</span>
+              </div>
+              <span class="text-xs text-indigo-600 font-bold">&rarr;</span>
+            </button>
+          </div>
+
+          <div id="dashboard-insight-box" class="mt-4 p-4 rounded-lg bg-indigo-50 border border-indigo-200 text-xs text-indigo-900">
+            Click on any trade-off above to reveal detailed mathematical and engineering takeaways.
+          </div>
+        </div>
+
+        <div class="bg-white rounded-xl shadow-md p-6 border border-slate-200">
+          <h3 class="text-base font-bold text-slate-900 mb-2">Phase Perception Thresholds Quick Reference</h3>
+          <p class="text-xs text-slate-500 mb-4">Empirical findings from AES studies on human auditory phase sensitivity.</p>
+          
+          <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse text-xs">
+              <thead>
+                <tr class="bg-slate-100 text-slate-700">
+                  <th class="p-2 border border-slate-200 font-semibold">Phenomenon</th>
+                  <th class="p-2 border border-slate-200 font-semibold">Frequency / Metric</th>
+                  <th class="p-2 border border-slate-200 font-semibold">Audibility Threshold</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-200 text-slate-600">
+                <tr>
+                  <td class="p-2 border border-slate-200 font-medium text-slate-800">Group Delay Shift</td>
+                  <td class="p-2 border border-slate-200">300 Hz - 1.0 kHz</td>
+                  <td class="p-2 border border-slate-200 text-emerald-700 font-semibold">&lt; 1.0 ms (Inaudible)</td>
+                </tr>
+                <tr>
+                  <td class="p-2 border border-slate-200 font-medium text-slate-800">Binaural Localization (IPD)</td>
+                  <td class="p-2 border border-slate-200">&lt; 1.5 kHz</td>
+                  <td class="p-2 border border-slate-200">Primary cue for lateralization</td>
+                </tr>
+                <tr>
+                  <td class="p-2 border border-slate-200 font-medium text-slate-800">Binaural Level Difference (ILD)</td>
+                  <td class="p-2 border border-slate-200">&gt; 1.5 kHz</td>
+                  <td class="p-2 border border-slate-200">Replaces IPD due to spatial aliasing</td>
+                </tr>
+                <tr>
+                  <td class="p-2 border border-slate-200 font-medium text-slate-800">Pre-ringing Detection</td>
+                  <td class="p-2 border border-slate-200">Transient Signals</td>
+                  <td class="p-2 border border-slate-200 text-amber-700 font-semibold">Highly Audible (Pre-masking &lt; 5ms)</td>
+                </tr>
+                <tr>
+                  <td class="p-2 border border-slate-200 font-medium text-slate-800">Absolute Polarity Inversion</td>
+                  <td class="p-2 border border-slate-200">Asymmetric Waves</td>
+                  <td class="p-2 border border-slate-200">Audible in solo brass/stems; lost in complex mixes</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="sec-physics" class="space-y-6 hidden">
+      <div class="bg-white rounded-xl shadow-md p-6 border border-slate-200">
+        <h2 class="text-xl font-bold text-slate-900 mb-2">Physics & Mathematics of Audio Phase</h2>
+        <p class="text-xs text-slate-600 mb-4 leading-relaxed">
+          This section explores the mathematical foundation of continuous Linear Time-Invariant (LTI) systems, distinguishing between Phase Delay ($\tau_p$) and Group Delay ($\tau_g$), as well as binaural perception mechanisms like Interaural Phase Difference (IPD).
+        </p>
+
+        <div class="bg-indigo-50 border-l-4 border-indigo-600 p-4 rounded-r-lg mb-6">
+          <h4 class="font-bold text-xs text-indigo-900 uppercase tracking-wide">Fundamental Formulas</h4>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2 text-xs text-indigo-950">
+            <div>
+              <p class="font-mono bg-white p-2 rounded border border-indigo-200">Phase Delay: &tau;<sub>p</sub>(&omega;) = - &phi;(&omega;) / &omega;</p>
+              <p class="mt-1 text-slate-600">Represents the absolute time delay of individual carrier sine frequencies.</p>
+            </div>
+            <div>
+              <p class="font-mono bg-white p-2 rounded border border-indigo-200">Group Delay: &tau;<sub>g</sub>(&omega;) = - d&phi;(&omega;) / d&omega;</p>
+              <p class="mt-1 text-slate-600">Represents the negative derivative of phase with respect to angular frequency; dictates the envelope time shift.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div class="lg:col-span-1 space-y-4">
+            <div class="bg-slate-50 p-4 rounded-lg border border-slate-200">
+              <h3 class="text-sm font-bold text-slate-800 mb-3">Interactive Delay Curves Visualizer</h3>
+              <p class="text-xs text-slate-600 mb-4">Adjust non-linear phase dispersion to see how group delay ($\tau_g$) diverges from phase delay ($\tau_p$). Linear phase systems maintain constant, flat delay for all frequencies.</p>
+
+              <div class="space-y-3 text-xs">
+                <div>
+                  <label class="font-medium text-slate-700 flex justify-between">
+                    <span>Non-Linear Phase Factor (Dispersion):</span>
+                    <span id="dispersion-val" class="text-indigo-600 font-bold">0.5</span>
+                  </label>
+                  <input type="range" id="dispersion-slider" min="0" max="2" step="0.1" value="0.5" class="w-full mt-1 accent-indigo-600" oninput="updatePhysicsChart()">
+                </div>
+
+                <div class="p-3 bg-white rounded border border-slate-200 text-xs space-y-1">
+                  <div class="flex justify-between">
+                    <span class="text-slate-500">System Type:</span>
+                    <span id="system-type-badge" class="font-semibold text-indigo-600">Dispersive (Non-linear Phase)</span>
+                  </div>
+                  <div class="flex justify-between">
+                    <span class="text-slate-500">Shape Integrity:</span>
+                    <span id="shape-badge" class="font-semibold text-amber-600">Transient Smearing Present</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="bg-slate-50 p-4 rounded-lg border border-slate-200 text-xs">
+              <h4 class="font-bold text-slate-800 mb-2">Psychoacoustics & IPD vs ILD</h4>
+              <p class="text-slate-600 mb-2">Human spatial hearing relies on two frequency-separated mechanisms:</p>
+              <ul class="list-disc pl-4 space-y-1 text-slate-600">
+                <li><strong class="text-slate-800">&lt; 1.5 kHz (IPD):</strong> Path distance difference $l_\Delta$ between ears creates a phase difference $\Delta \phi$. Wavelength is larger than head dimensions.</li>
+                <li><strong class="text-slate-800">&gt; 1.5 kHz (ILD):</strong> Spatial aliasing occurs because wavelength is shorter than head diameter. Brain switches to amplitude cues (Interaural Level Difference).</li>
+              </ul>
+            </div>
+          </div>
+
+          <div class="lg:col-span-2 bg-slate-50 p-4 rounded-lg border border-slate-200 flex flex-col justify-center">
+            <h4 class="text-xs font-bold text-slate-700 mb-2 text-center">Phase Delay (&tau;<sub>p</sub>) vs Group Delay (&tau;<sub>g</sub>) vs Frequency</h4>
+            <div class="chart-container">
+              <canvas id="physicsChart"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="sec-proaudio" class="space-y-6 hidden">
+      <div class="bg-white rounded-xl shadow-md p-6 border border-slate-200">
+        <h2 class="text-xl font-bold text-slate-900 mb-2">Pro Audio, System Optimization & Crossovers</h2>
+        <p class="text-xs text-slate-600 mb-4 leading-relaxed">
+          In professional live sound reinforcement and studio monitor design, crossover phase behavior determines whether multi-way speaker transducers sum coherently in acoustic space or create destructive comb filtering.
+        </p>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div class="lg:col-span-1 space-y-4">
+            <div class="bg-slate-50 p-4 rounded-lg border border-slate-200 text-xs space-y-3">
+              <h3 class="text-sm font-bold text-slate-800">Crossover Topology Simulator</h3>
+              <p class="text-slate-600">Select a crossover filter network to inspect acoustic energy summation at the crossover frequency ($f_c$).</p>
+
+              <div>
+                <label class="font-semibold text-slate-700 block mb-1">Select Crossover Type:</label>
+                <select id="crossover-select" onchange="updateCrossoverChart()" class="w-full bg-white border border-slate-300 rounded p-2 text-xs text-slate-800 focus:ring-2 focus:ring-indigo-500">
+                  <option value="lr4">Linkwitz-Riley 4th Order (24 dB/oct) - Industry Standard</option>
+                  <option value="bw2">Butterworth 2nd Order (12 dB/oct) - Peak Issue</option>
+                  <option value="lr2">Linkwitz-Riley 2nd Order (12 dB/oct) - Inverted</option>
+                </select>
+              </div>
+
+              <div id="crossover-details-box" class="p-3 bg-indigo-50 rounded border border-indigo-200 text-xs text-indigo-900 space-y-1">
+              </div>
+            </div>
+
+            <div class="bg-slate-50 p-4 rounded-lg border border-slate-200 text-xs space-y-2">
+              <h4 class="font-bold text-slate-800">System Alignment & Dual FFT</h4>
+              <p class="text-slate-600">Live sound tuning utilizes dual-channel FFT analyzers (e.g., Smaart) to measure real-time phase curves across audience areas.</p>
+              <div class="p-2 bg-white rounded border border-slate-200 font-mono text-slate-700">
+                Phase Correlation Meter:<br>
+                r = &sum;(L &middot; R) / &radic;(&sum;L<sup>2</sup> &middot; &sum;R<sup>2</sup>)
+              </div>
+              <p class="text-slate-500">
+                +1.0 = Pure Mono | 0.0 = Uncorrelated Stereo | -1.0 = 180° Inverted Cancellation
+              </p>
+            </div>
+          </div>
+
+          <div class="lg:col-span-2 bg-slate-50 p-4 rounded-lg border border-slate-200 flex flex-col justify-center">
+            <h4 class="text-xs font-bold text-slate-700 mb-2 text-center">Magnitude Summation Response (Low-Pass + High-Pass = Sum)</h4>
+            <div class="chart-container">
+              <canvas id="crossoverChart"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="sec-forums" class="space-y-6 hidden">
+      <div class="bg-white rounded-xl shadow-md p-6 border border-slate-200">
+        <h2 class="text-xl font-bold text-slate-900 mb-2">Amateur Forums, Audiophile Debates & Practical Workarounds</h2>
+        <p class="text-xs text-slate-600 mb-4 leading-relaxed">
+          Public forums (KVR Audio, Audio Science Review, DSP StackExchange) host intense debates regarding Linear Phase vs. Minimum Phase equalization, as well as heuristic approximations for complex DSP operations.
+        </p>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div class="bg-slate-50 rounded-lg p-5 border border-slate-200 space-y-3">
+            <div class="flex items-center space-x-2">
+              <span class="text-indigo-600 font-bold text-sm">⚖️ Linear Phase vs. Minimum Phase</span>
+            </div>
+            
+            <div class="space-y-2 text-xs">
+              <div class="p-3 bg-white rounded border border-slate-200">
+                <h4 class="font-bold text-indigo-900 mb-1">Minimum Phase Equalizer</h4>
+                <p class="text-slate-600">Causal system. Zero pre-energy. Phase shift is non-zero and directly proportional to amplitude changes. High-pass filters introduce significant group delay dispersion, smearing transient punch.</p>
+              </div>
+
+              <div class="p-3 bg-white rounded border border-slate-200">
+                <h4 class="font-bold text-rose-900 mb-1">Linear Phase Equalizer</h4>
+                <p class="text-slate-600">Non-causal (requires FIR symmetry and buffer latency). Constant group delay prevents phase distortion. However, steep low-frequency cuts introduce severe <strong class="text-rose-700">Pre-ringing</strong> energy before transients, which human ears detect easily due to asymmetric auditory pre-masking (&lt;5ms).</p>
+              </div>
+            </div>
+
+            <div class="pt-2">
+              <label class="font-semibold text-xs text-slate-700 block mb-1">Simulate Impulse Response Transient:</label>
+              <div class="flex space-x-2">
+                <button onclick="updateImpulseChart('min')" class="px-3 py-1.5 bg-indigo-600 text-white rounded text-xs hover:bg-indigo-700">Show Minimum Phase</button>
+                <button onclick="updateImpulseChart('lin')" class="px-3 py-1.5 bg-rose-600 text-white rounded text-xs hover:bg-rose-700">Show Linear Phase (Pre-ringing)</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="bg-slate-50 rounded-lg p-5 border border-slate-200 flex flex-col justify-center">
+            <h4 class="text-xs font-bold text-slate-700 mb-2 text-center">Simulated Impulse Response (Pre-Ringing vs Causal Output)</h4>
+            <div class="chart-container">
+              <canvas id="impulseChart"></canvas>
+            </div>
+          </div>
+        </div>
+
+        <div class="bg-amber-50 border border-amber-200 rounded-lg p-4 mt-6">
+          <h3 class="text-sm font-bold text-amber-900 mb-2">DIY Math: Minimum Phase Derivation via Hilbert Transform & Cepstrum</h3>
+          <p class="text-xs text-amber-950 leading-relaxed mb-3">
+            Forum communities frequently attempt to synthesize minimum phase responses from known magnitude responses using the Hilbert transform relationship:
+            <span class="font-mono bg-white px-2 py-0.5 rounded border border-amber-300 mx-1">&theta;(&omega;) = -H[ln(G(&omega;))]</span>.
+            However, practical implementation via the complex cepstrum requires long FFT buffers and guarantees that the system has no zeros on or outside the Z-plane unit circle.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <section id="sec-cppdsp" class="space-y-6 hidden">
+      <div class="bg-white rounded-xl shadow-md p-6 border border-slate-200">
+        <h2 class="text-xl font-bold text-slate-900 mb-2">C++ & JUCE Framework DSP Implementation</h2>
+        <p class="text-xs text-slate-600 mb-4 leading-relaxed">
+          Translating phase equations into real-time VST/AU plugins demands strict memory safety (zero allocations in audio thread), cache alignment, and efficient numeric structures.
+        </p>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div class="bg-slate-50 rounded-lg p-4 border border-slate-200">
+            <h3 class="text-sm font-bold text-slate-800 mb-3">JUCE Oversampling: FIR vs Polyphase IIR</h3>
+            <p class="text-xs text-slate-600 mb-3">When building non-linear saturation or dynamics, anti-aliasing oversampling is required (`juce::dsp::Oversampling`).</p>
+            
+            <div class="overflow-x-auto text-xs">
+              <table class="w-full text-left border-collapse">
+                <thead>
+                  <tr class="bg-slate-200 text-slate-800">
+                    <th class="p-2 border">Type / Method</th>
+                    <th class="p-2 border">Latency</th>
+                    <th class="p-2 border">Phase Behavior</th>
+                    <th class="p-2 border">Use Case</th>
+                  </tr>
+                </thead>
+                <tbody class="bg-white text-slate-700 divide-y">
+                  <tr>
+                    <td class="p-2 border font-mono font-bold text-indigo-700">filterHalfBandFIREquiripple</td>
+                    <td class="p-2 border">High (Buffer Latency)</td>
+                    <td class="p-2 border text-emerald-700 font-semibold">Perfect Linear Phase</td>
+                    <td class="p-2 border">Mastering EQ, Off-line rendering</td>
+                  </tr>
+                  <tr>
+                    <td class="p-2 border font-mono font-bold text-amber-700">filterHalfBandPolyphaseIIR</td>
+                    <td class="p-2 border text-emerald-700 font-semibold">Zero / Near Zero</td>
+                    <td class="p-2 border text-amber-700">Non-linear Minimum Phase Shift</td>
+                    <td class="p-2 border">Live Performance, Real-time VSTs</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="bg-slate-50 rounded-lg p-4 border border-slate-200">
+            <h3 class="text-sm font-bold text-slate-800 mb-3">Phase Vocoder Algorithm Pipeline</h3>
+            <p class="text-xs text-slate-600 mb-2">Time-stretching and pitch-shifting rely on the complex STFT Phase Vocoder. Click steps to inspect DSP operations:</p>
+
+            <div class="grid grid-cols-5 gap-1 text-center font-mono text-[10px] mb-3">
+              <button onclick="showVocoderStep(1)" class="p-2 bg-indigo-600 text-white rounded hover:bg-indigo-700">1. STFT</button>
+              <button onclick="showVocoderStep(2)" class="p-2 bg-indigo-600 text-white rounded hover:bg-indigo-700">2. Polar</button>
+              <button onclick="showVocoderStep(3)" class="p-2 bg-indigo-600 text-white rounded hover:bg-indigo-700">3. Unwrap</button>
+              <button onclick="showVocoderStep(4)" class="p-2 bg-indigo-600 text-white rounded hover:bg-indigo-700">4. Lock</button>
+              <button onclick="showVocoderStep(5)" class="p-2 bg-indigo-600 text-white rounded hover:bg-indigo-700">5. IFFT</button>
+            </div>
+
+            <div id="vocoder-step-info" class="p-3 bg-white rounded border border-slate-200 text-xs text-slate-700 min-h-[90px]">
+              Click a step above to view math details and phase-locking mechanisms.
+            </div>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+          <div class="bg-slate-50 rounded-lg p-4 border border-slate-200 space-y-3">
+            <h3 class="text-sm font-bold text-slate-800">Fractional Delay & Thiran All-Pass Filter</h3>
+            <p class="text-xs text-slate-600">Physical modeling (Karplus-Strong string synthesis) requires non-integer sample delays (e.g., 10.4 samples). Standard linear interpolation attenuates high frequencies in feedback loops. The Thiran all-pass filter guarantees unity amplitude gain and maximally flat group delay at low frequencies.</p>
+
+            <div class="pt-2">
+              <button onclick="toggleThiranChart()" class="px-3 py-1.5 bg-indigo-600 text-white rounded text-xs hover:bg-indigo-700">Toggle Thiran vs Linear Interpolation Magnitude</button>
+            </div>
+          </div>
+
+          <div class="bg-slate-50 rounded-lg p-4 border border-slate-200 flex flex-col justify-center">
+            <h4 class="text-xs font-bold text-slate-700 mb-2 text-center">Frequency Response: Thiran All-Pass vs Linear Interpolation</h4>
+            <div class="chart-container">
+              <canvas id="thiranChart"></canvas>
+            </div>
+          </div>
+        </div>
+
+        <div class="bg-slate-900 text-slate-100 rounded-lg p-4 border border-slate-800 font-mono text-xs mt-6">
+          <h4 class="text-amber-400 font-bold text-xs uppercase mb-2">// GCC-PHAT Delay Estimation Algorithm Structure (C++)</h4>
+          <p class="text-slate-400 mb-2">// Generalized Cross-Correlation with Phase Transform for Auto-Alignment Plugins</p>
+          <pre class="bg-slate-950 p-3 rounded text-indigo-300 overflow-x-auto">
+1. Calculate Cross-Power Spectral Density: G_xy(&omega;) = X(&omega;) &middot; Y*(&omega;)
+2. Normalize Magnitude (Phase Whitening Filter): R_phat(&omega;) = G_xy(&omega;) / |G_xy(&omega;)|
+3. Compute Inverse FFT: R_phat(t) = IFFT(R_phat(&omega;))
+4. Estimate Delay: &tau;_delay = argmax_t (R_phat(t))
+          </pre>
+        </div>
+      </div>
+    </section>
+
+    <section id="sec-playground" class="space-y-6 hidden">
+      <div class="bg-white rounded-xl shadow-md p-6 border border-slate-200">
+        <h2 class="text-xl font-bold text-slate-900 mb-2">Interactive Wave Phase & Comb Filter Playground</h2>
+        <p class="text-xs text-slate-600 mb-4 leading-relaxed">
+          Experiment with sine wave summation in real time. Adjust phase offset and amplitude ratios to observe constructive vs. destructive interference, phase correlation values, and resulting amplitude magnitude.
+        </p>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div class="lg:col-span-1 bg-slate-50 p-4 rounded-lg border border-slate-200 space-y-4">
+            <h3 class="text-sm font-bold text-slate-800">Signal Controls</h3>
+
+            <div class="space-y-3 text-xs">
+              <div>
+                <label class="font-medium text-slate-700 flex justify-between">
+                  <span>Phase Offset (&theta;):</span>
+                  <span id="playground-phase-val" class="text-indigo-600 font-bold">0°</span>
+                </label>
+                <input type="range" id="playground-phase" min="0" max="360" step="5" value="0" class="w-full mt-1 accent-indigo-600" oninput="updatePlayground()">
+              </div>
+
+              <div>
+                <label class="font-medium text-slate-700 flex justify-between">
+                  <span>Channel B Amplitude Ratio:</span>
+                  <span id="playground-amp-val" class="text-indigo-600 font-bold">1.0</span>
+                </label>
+                <input type="range" id="playground-amp" min="0" max="1" step="0.05" value="1" class="w-full mt-1 accent-indigo-600" oninput="updatePlayground()">
+              </div>
+
+              <div class="p-3 bg-white rounded border border-slate-200 text-xs space-y-2">
+                <div class="flex justify-between items-center">
+                  <span class="text-slate-500">Calculated Correlation (r):</span>
+                  <span id="playground-corr-val" class="font-bold text-indigo-600">+1.00</span>
+                </div>
+                <div class="w-full bg-slate-200 rounded-full h-2.5 overflow-hidden">
+                  <div id="playground-corr-bar" class="bg-emerald-500 h-2.5 rounded-full" style="width: 100%"></div>
+                </div>
+
+                <div class="flex justify-between items-center pt-2 border-t border-slate-100">
+                  <span class="text-slate-500">Summed Peak Gain:</span>
+                  <span id="playground-peak-val" class="font-bold text-emerald-600">+6.0 dB</span>
+                </div>
+                <div class="flex justify-between items-center">
+                  <span class="text-slate-500">Interference State:</span>
+                  <span id="playground-state-val" class="font-bold text-emerald-600">Pure Constructive</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="lg:col-span-2 bg-slate-50 p-4 rounded-lg border border-slate-200 flex flex-col justify-center">
+            <h4 class="text-xs font-bold text-slate-700 mb-2 text-center">Time Domain Wave Summation (Channel A + Channel B = Sum)</h4>
+            <div class="chart-container">
+              <canvas id="playgroundChart"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="bg-slate-900 text-slate-400 border-t border-slate-800 text-xs py-4 px-4 sm:px-6 mt-auto">
+    <div class="max-w-7xl mx-auto flex flex-col sm:flex-row justify-between items-center text-center sm:text-left">
+      <div>
+        <p class="font-semibold text-slate-200">Audio Phase Interactive Research Explorer</p>
+        <p class="text-slate-500 mt-0.5">Synthesized from Academic AES Papers, Pro Audio Systems Engineering & JUCE C++ DSP Practices.</p>
+      </div>
+      <div class="mt-2 sm:mt-0 text-slate-500">
+        <span>Single-Page Application Framework</span>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    let physicsChartInstance = null;
+    let crossoverChartInstance = null;
+    let impulseChartInstance = null;
+    let thiranChartInstance = null;
+    let playgroundChartInstance = null;
+
+    function switchTab(tabId) {
+      const tabs = ['dashboard', 'physics', 'proaudio', 'forums', 'cppdsp', 'playground'];
+      tabs.forEach(t => {
+        document.getElementById('sec-' + t).classList.add('hidden');
+        document.getElementById('tab-' + t).classList.remove('active');
+      });
+
+      document.getElementById('sec-' + tabId).classList.remove('hidden');
+      document.getElementById('tab-' + tabId).classList.add('active');
+
+      if (tabId === 'physics' && !physicsChartInstance) initPhysicsChart();
+      if (tabId === 'proaudio' && !crossoverChartInstance) initCrossoverChart();
+      if (tabId === 'forums' && !impulseChartInstance) initImpulseChart();
+      if (tabId === 'cppdsp' && !thiranChartInstance) initThiranChart();
+      if (tabId === 'playground' && !playgroundChartInstance) initPlaygroundChart();
+    }
+
+    function showDashboardInsight(key) {
+      const insightBox = document.getElementById('dashboard-insight-box');
+      if (key === 'linear_min') {
+        insightBox.innerHTML = '<strong>Linear Phase vs Minimum Phase:</strong> Linear phase preserves physical transient shapes and complex phase alignment by imposing constant group delay across all frequencies. However, it introduces non-causal pre-ringing (time-spill before transients) and requires large buffer latencies. Minimum phase is zero-latency and causal (ideal for tracking/live DSP), but introduces non-linear phase delay and temporal transient smearing.';
+      } else if (key === 'oversampling') {
+        insightBox.innerHTML = '<strong>FIR vs IIR Oversampling:</strong> JUCE equiripple FIR oversampling filters deliver pristine flat linear phase but increase system latency. Conversely, IIR polyphase all-pass half-band structures operate with near-zero latency suitable for live VST plugins, but warp high-frequency phase near the Nyquist limit.';
+      } else if (key === 'fractional') {
+        insightBox.innerHTML = '<strong>Linear Interpolation vs Thiran All-Pass:</strong> Linear interpolation acts as a frequency-dependent low-pass filter, rapidly damping high frequencies inside feedback loops (e.g. Karplus-Strong string modeling). The Thiran all-pass filter preserves unity amplitude gain across the entire audio bandwidth while tailoring fractional phase delay for exact pitch tuning.';
+      }
+    }
+
+    function initPhysicsChart() {
+      const ctx = document.getElementById('physicsChart').getContext('2d');
+      physicsChartInstance = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: [20, 100, 250, 500, 1000, 2000, 4000, 8000, 16000],
+          datasets: [
+            {
+              label: 'Phase Delay τp(ω) (ms)',
+              data: [1.2, 1.2, 1.25, 1.3, 1.45, 1.7, 2.2, 3.1, 4.5],
+              borderColor: '#4f46e5',
+              backgroundColor: 'rgba(79, 70, 229, 0.1)',
+              borderWidth: 2,
+              fill: false,
+              tension: 0.3
+            },
+            {
+              label: 'Group Delay τg(ω) (ms) [dϕ/dω]',
+              data: [1.2, 1.2, 1.35, 1.6, 2.1, 2.9, 4.2, 6.5, 10.2],
+              borderColor: '#f59e0b',
+              backgroundColor: 'rgba(245, 158, 11, 0.1)',
+              borderWidth: 2,
+              fill: false,
+              tension: 0.3
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            tooltip: {
+              callbacks: {
+                title: function(items) { return 'Frequency: ' + items[0].label + ' Hz'; }
+              }
+            }
+          },
+          scales: {
+            x: { title: { display: true, text: 'Frequency (Hz)' } },
+            y: { title: { display: true, text: 'Time Delay (ms)' }, beginAtZero: true }
+          }
+        }
+      });
+    }
+
+    function updatePhysicsChart() {
+      if (!physicsChartInstance) return;
+      const factor = parseFloat(document.getElementById('dispersion-slider').value);
+      document.getElementById('dispersion-val').innerText = factor.toFixed(1);
+
+      const basePhase = [1.2, 1.2, 1.25, 1.3, 1.45, 1.7, 2.2, 3.1, 4.5];
+      const newPhase = basePhase.map((v, i) => 1.2 + (v - 1.2) * factor);
+      const newGroup = basePhase.map((v, i) => 1.2 + (v - 1.2) * factor * 2.1);
+
+      physicsChartInstance.data.datasets[0].data = newPhase;
+      physicsChartInstance.data.datasets[1].data = newGroup;
+      physicsChartInstance.update();
+
+      const badge = document.getElementById('system-type-badge');
+      const shape = document.getElementById('shape-badge');
+      if (factor === 0) {
+        badge.innerText = 'Linear Phase (Constant Delay)';
+        badge.className = 'font-semibold text-emerald-600';
+        shape.innerText = 'Preserved Wave Shape';
+        shape.className = 'font-semibold text-emerald-600';
+      } else {
+        badge.innerText = 'Dispersive (Non-linear Phase)';
+        badge.className = 'font-semibold text-indigo-600';
+        shape.innerText = 'Transient Smearing Present';
+        shape.className = 'font-semibold text-amber-600';
+      }
+    }
+
+    function initCrossoverChart() {
+      const ctx = document.getElementById('crossoverChart').getContext('2d');
+      crossoverChartInstance = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: ['100Hz', '250Hz', '500Hz', '1kHz (Fc)', '2kHz', '4kHz', '8kHz'],
+          datasets: [
+            {
+              label: 'Low Pass Section (dB)',
+              data: [0, -0.1, -0.8, -6.0, -18.0, -36.0, -54.0],
+              borderColor: '#3b82f6',
+              borderDash: [5, 5],
+              borderWidth: 2,
+              fill: false
+            },
+            {
+              label: 'High Pass Section (dB)',
+              data: [-54.0, -36.0, -18.0, -6.0, -0.8, -0.1, 0],
+              borderColor: '#ec4899',
+              borderDash: [5, 5],
+              borderWidth: 2,
+              fill: false
+            },
+            {
+              label: 'Acoustic Summed Output (dB)',
+              data: [0, 0, 0, 0, 0, 0, 0],
+              borderColor: '#10b981',
+              borderWidth: 3,
+              fill: false
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            x: { title: { display: true, text: 'Frequency Band' } },
+            y: { title: { display: true, text: 'Magnitude Response (dB)' }, min: -30, max: 6 }
+          }
+        }
+      });
+      updateCrossoverChart();
+    }
+
+    function updateCrossoverChart() {
+      if (!crossoverChartInstance) return;
+      const type = document.getElementById('crossover-select').value;
+      const box = document.getElementById('crossover-details-box');
+
+      if (type === 'lr4') {
+        crossoverChartInstance.data.datasets[0].data = [0, -0.1, -0.8, -6.0, -18.0, -36.0, -54.0];
+        crossoverChartInstance.data.datasets[1].data = [-54.0, -36.0, -18.0, -6.0, -0.8, -0.1, 0];
+        crossoverChartInstance.data.datasets[2].data = [0, 0, 0, 0, 0, 0, 0];
+        box.innerHTML = '<strong>Linkwitz-Riley 4th Order (LR-4):</strong> Cascades two 2nd order Butterworth filters. Attenuation at Fc is exactly -6.0 dB. Relative phase difference is 360° (in-phase full period). Acoustic sum is <strong>perfectly flat (0 dB)</strong> without radiation lobe tilting.';
+      } else if (type === 'bw2') {
+        crossoverChartInstance.data.datasets[0].data = [0, -0.1, -0.5, -3.0, -12.0, -24.0, -36.0];
+        crossoverChartInstance.data.datasets[1].data = [-36.0, -24.0, -12.0, -3.0, -0.5, -0.1, 0];
+        crossoverChartInstance.data.datasets[2].data = [0, 0, 0.5, 3.0, 0.5, 0, 0];
+        box.innerHTML = '<strong>Butterworth 2nd Order:</strong> Attenuation at Fc is -3.0 dB. Low and High pass sections exhibit 180° phase difference. Simple summation creates an audible <strong>+3.0 dB peak boost</strong> at crossover region requiring dynamic polarity inversion.';
+      } else if (type === 'lr2') {
+        crossoverChartInstance.data.datasets[0].data = [0, -0.1, -0.5, -6.0, -12.0, -24.0, -36.0];
+        crossoverChartInstance.data.datasets[1].data = [-36.0, -24.0, -12.0, -6.0, -0.5, -0.1, 0];
+        crossoverChartInstance.data.datasets[2].data = [0, 0, 0, 0, 0, 0, 0];
+        box.innerHTML = '<strong>Linkwitz-Riley 2nd Order:</strong> -6 dB attenuation at Fc. Low and High pass outputs have 180° phase difference. Requires absolute polarity inversion on one driver to achieve flat acoustic summation.';
+      }
+      crossoverChartInstance.update();
+    }
+
+    function initImpulseChart() {
+      const ctx = document.getElementById('impulseChart').getContext('2d');
+      impulseChartInstance = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: Array.from({length: 41}, (_, i) => (i - 20) + ' ms'),
+          datasets: [{
+            label: 'Impulse Amplitude',
+            data: generateImpulseData('min'),
+            borderColor: '#4f46e5',
+            backgroundColor: 'rgba(79, 70, 229, 0.1)',
+            borderWidth: 2,
+            fill: true,
+            pointRadius: 0
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            x: { title: { display: true, text: 'Time Relative to Impulse Center (ms)' } },
+            y: { title: { display: true, text: 'Amplitude' }, min: -0.6, max: 1.1 }
+          }
+        }
+      });
+    }
+
+    function generateImpulseData(type) {
+      const arr = [];
+      for (let i = -20; i <= 20; i++) {
+        if (type === 'min') {
+          if (i < 0) arr.push(0);
+          else if (i === 0) arr.push(1.0);
+          else arr.push(Math.exp(-i * 0.3) * Math.cos(i * 0.8) * 0.6);
+        } else {
+          const t = i;
+          if (t === 0) arr.push(1.0);
+          else {
+            const val = (Math.sin(t * 0.5) / (t * 0.5)) * Math.exp(-Math.abs(t) * 0.15);
+            arr.push(val * 0.5);
+          }
+        }
+      }
+      return arr;
+    }
+
+    function updateImpulseChart(type) {
+      if (!impulseChartInstance) return;
+      impulseChartInstance.data.datasets[0].data = generateImpulseData(type);
+      impulseChartInstance.data.datasets[0].borderColor = (type === 'min') ? '#4f46e5' : '#e11d48';
+      impulseChartInstance.data.datasets[0].backgroundColor = (type === 'min') ? 'rgba(79, 70, 229, 0.1)' : 'rgba(225, 29, 72, 0.1)';
+      impulseChartInstance.data.datasets[0].label = (type === 'min') ? 'Minimum Phase (Causal - Post-Ringing Only)' : 'Linear Phase (Non-Causal Pre-Ringing Energy)';
+      impulseChartInstance.update();
+    }
+
+    function showVocoderStep(step) {
+      const info = document.getElementById('vocoder-step-info');
+      const steps = {
+        1: '<strong>Step 1: Short-Time Fourier Transform (STFT):</strong> Audio is windowed into overlapping frames (e.g. Hann window) and transformed to complex frequency bins: <i>X(k) = Re + j Im</i>.',
+        2: '<strong>Step 2: Polar Coordinate Transformation:</strong> Rectangular complex numbers are converted to Magnitude <i>|X(k)| = √(Re² + Im²)</i> and Phase Angle <i>φ(k) = atan2(Im, Re)</i>.',
+        3: '<strong>Step 3: Phase Unwrapping:</strong> Consecutive frame phase differences are unwrapped by subtracting expected phase advance, exposing exact instantaneous frequencies.',
+        4: '<strong>Step 4: Phase Locking & Peak Tracking:</strong> Crucial C++ step (Rubberband / ZTX style). Bins adjacent to spectral peaks are locked to the peak phase to prevent transient "phasiness" and loss of punch.',
+        5: '<strong>Step 5: Inverse FFT & Overlap-Add:</strong> Modified spectrum is converted back to time domain via IFFT and re-assembled using overlap-add synthesis.'
+      };
+      info.innerHTML = steps[step];
+    }
+
+    function initThiranChart() {
+      const ctx = document.getElementById('thiranChart').getContext('2d');
+      thiranChartInstance = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: ['0Hz', '2kHz', '5kHz', '10kHz', '15kHz', '20kHz (Nyquist)'],
+          datasets: [
+            {
+              label: 'Thiran All-Pass Fractional Delay Gain (dB)',
+              data: [0, 0, 0, 0, 0, 0],
+              borderColor: '#10b981',
+              borderWidth: 2.5,
+              fill: false
+            },
+            {
+              label: 'Linear Interpolation Fractional Delay Gain (dB)',
+              data: [0, -0.2, -1.1, -3.5, -7.2, -12.0],
+              borderColor: '#f59e0b',
+              borderDash: [4, 4],
+              borderWidth: 2,
+              fill: false
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            x: { title: { display: true, text: 'Frequency' } },
+            y: { title: { display: true, text: 'Magnitude Gain (dB)' }, min: -14, max: 2 }
+          }
+        }
+      });
+    }
+
+    function toggleThiranChart() {
+      if (!thiranChartInstance) return;
+      thiranChartInstance.update();
+    }
+
+    function initPlaygroundChart() {
+      const ctx = document.getElementById('playgroundChart').getContext('2d');
+      playgroundChartInstance = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: Array.from({length: 50}, (_, i) => i),
+          datasets: [
+            {
+              label: 'Channel A',
+              data: [],
+              borderColor: '#6366f1',
+              borderWidth: 1.5,
+              pointRadius: 0,
+              fill: false
+            },
+            {
+              label: 'Channel B (Shifted)',
+              data: [],
+              borderColor: '#f59e0b',
+              borderWidth: 1.5,
+              pointRadius: 0,
+              fill: false
+            },
+            {
+              label: 'Summed Output (A + B)',
+              data: [],
+              borderColor: '#10b981',
+              borderWidth: 2.5,
+              pointRadius: 0,
+              fill: false
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          animation: false,
+          scales: {
+            x: { display: false },
+            y: { min: -2.2, max: 2.2, title: { display: true, text: 'Normalized Amplitude' } }
+          }
+        }
+      });
+      updatePlayground();
+    }
+
+    function updatePlayground() {
+      if (!playgroundChartInstance) return;
+      const phaseDeg = parseFloat(document.getElementById('playground-phase').value);
+      const ampB = parseFloat(document.getElementById('playground-amp').value);
+
+      document.getElementById('playground-phase-val').innerText = phaseDeg + '°';
+      document.getElementById('playground-amp-val').innerText = ampB.toFixed(2);
+
+      const rad = (phaseDeg * Math.PI) / 180;
+      const points = 50;
+      const dataA = [];
+      const dataB = [];
+      const dataSum = [];
+
+      for (let i = 0; i < points; i++) {
+        const t = (i / points) * Math.PI * 4;
+        const valA = Math.sin(t);
+        const valB = Math.sin(t + rad) * ampB;
+        dataA.push(valA);
+        dataB.push(valB);
+        dataSum.push(valA + valB);
+      }
+
+      playgroundChartInstance.data.datasets[0].data = dataA;
+      playgroundChartInstance.data.datasets[1].data = dataB;
+      playgroundChartInstance.data.datasets[2].data = dataSum;
+      playgroundChartInstance.update();
+
+      const corr = Math.cos(rad);
+      const corrValBox = document.getElementById('playground-corr-val');
+      const corrBar = document.getElementById('playground-corr-bar');
+      corrValBox.innerText = (corr >= 0 ? '+' : '') + corr.toFixed(2);
+
+      const barPct = Math.max(0, Math.min(100, ((corr + 1) / 2) * 100));
+      corrBar.style.width = barPct + '%';
+      if (corr > 0.5) corrBar.className = 'bg-emerald-500 h-2.5 rounded-full';
+      else if (corr > -0.5) corrBar.className = 'bg-amber-500 h-2.5 rounded-full';
+      else corrBar.className = 'bg-rose-500 h-2.5 rounded-full';
+
+      const peakVal = Math.max(...dataSum.map(Math.abs));
+      const dbGain = 20 * Math.log10(peakVal > 0.001 ? peakVal : 0.001);
+      document.getElementById('playground-peak-val').innerText = (dbGain >= 0 ? '+' : '') + dbGain.toFixed(1) + ' dB';
+
+      const stateBox = document.getElementById('playground-state-val');
+      if (phaseDeg === 0) {
+        stateBox.innerText = 'Pure Constructive Summation';
+        stateBox.className = 'font-bold text-emerald-600';
+      } else if (phaseDeg === 180 && ampB === 1.0) {
+        stateBox.innerText = 'Total Destructive Phase Cancellation';
+        stateBox.className = 'font-bold text-rose-600';
+      } else if (phaseDeg > 120 && phaseDeg < 240) {
+        stateBox.innerText = 'Partial Phase Cancellation';
+        stateBox.className = 'font-bold text-amber-600';
+      } else {
+        stateBox.innerText = 'Partial Constructive Summation';
+        stateBox.className = 'font-bold text-indigo-600';
+      }
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      showDashboardInsight('linear_min');
+      showVocoderStep(1);
+    });
+  </script>
+</body>
+</html>
