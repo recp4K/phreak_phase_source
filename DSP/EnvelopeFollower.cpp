@@ -3,17 +3,24 @@
 void EnvelopeFollower::prepare(double sampleRate) noexcept
 {
     sr = std::max(1.0, sampleRate);
-    setTimeConstants(2.0f, 100.0f); // Default 2 ms attack, 100 ms release
+    // FIX: Track sample rate for dirty check
+    if (lastSampleRate != sampleRate)
+    {
+        lastSampleRate = sampleRate;
+        setTimeConstants(2.0f, 100.0f); // Default 2 ms attack, 100 ms release
+    }
     reset();
 }
 
 void EnvelopeFollower::setTimeConstants(float attackMs, float releaseMs) noexcept
 {
-    if (attackMs == lastAttackMs && releaseMs == lastReleaseMs)
+    // FIX: Add sample rate to dirty check to ensure coefficients are updated when sr changes
+    if (attackMs == lastAttackMs && releaseMs == lastReleaseMs && lastSampleRate == sr)
         return;
 
     lastAttackMs = attackMs;
     lastReleaseMs = releaseMs;
+    lastSampleRate = sr;
 
     attackMs = std::max(0.1f, attackMs);
     releaseMs = std::max(0.1f, releaseMs);

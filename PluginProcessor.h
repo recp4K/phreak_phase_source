@@ -137,6 +137,7 @@ private:
         bool dynEqDirty = true;
         bool subCrossoverDirty = true;
         bool dcBlockerDirty = true;
+        bool envelopeFollowerDirty = true;  // FIX: Added for EnvelopeFollower
     } dspDirtyFlags;
 
     // FIX: MIDI Learn support

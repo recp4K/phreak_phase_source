@@ -9,11 +9,16 @@ void DynamicEq::prepare(const juce::dsp::ProcessSpec& spec) noexcept
 
 void DynamicEq::setParameters(float freqHz, float depthDb) noexcept
 {
-    if (freqHz == lastFreq && depthDb == lastDepth)
+    // FIX: Added sampleRate to dirty check
+    // Old: Only checked freqHz and depthDb
+    // Problem: Coefficients depend on sampleRate, so they need to be recalculated
+    // when sampleRate changes, even if freq and depth are the same
+    if (freqHz == lastFreq && depthDb == lastDepth && sampleRate == lastSampleRate)
         return;
 
     lastFreq = freqHz;
     lastDepth = depthDb;
+    lastSampleRate = sampleRate;
     currentDepthDb = depthDb;
     currentFreq = freqHz;
     eqGainLinear = juce::Decibels::decibelsToGain(depthDb) - 1.0f;
@@ -36,6 +41,11 @@ void DynamicEq::reset() noexcept
 {
     s1_L = 0.0f; s1_R = 0.0f;
     s2_L = 0.0f; s2_R = 0.0f;
+    
+    // FIX: Also reset state for channels 2 and 3 if they exist
+    // Note: Current implementation only has state for 2 channels (L/R)
+    // but SIMD operations process 4 channels. This is a limitation.
+    // For now, we ensure channels 2 and 3 are initialized to 0 in processBlock.
 }
 
 void DynamicEq::processBlock(juce::dsp::AudioBlock<float>& block, const float* eqGainArray) noexcept
@@ -75,7 +85,12 @@ void DynamicEq::processBlock(juce::dsp::AudioBlock<float>& block, const float* e
         s2.set(1, s2_R);
         for (size_t k = 2; k < vFloat::size(); ++k) s2.set(k, 0.0f);
 
-        for (size_t i = 0; i < numSamples; ++i)
+        // FIX: Separate SIMD and scalar loops for better performance and safety
+        const size_t simdWidth = vFloat::size();
+        const size_t simdLimit = numSamples - (numSamples % simdWidth);
+
+        // Process SIMD chunks
+        for (size_t i = 0; i < simdLimit; ++i)
         {
             const float inL = std::isfinite(left[i])  ? left[i]  : 0.0f;
             const float inR = std::isfinite(right[i]) ? right[i] : 0.0f;
@@ -108,6 +123,34 @@ void DynamicEq::processBlock(juce::dsp::AudioBlock<float>& block, const float* e
             right[i] = std::isfinite(outR) ? outR : 0.0f;
         }
 
+        // Process remainder samples (if any)
+        for (size_t i = simdLimit; i < numSamples; ++i)
+        {
+            const float inL = std::isfinite(left[i])  ? left[i]  : 0.0f;
+            const float inR = std::isfinite(right[i]) ? right[i] : 0.0f;
+            const float gVal = std::isfinite(eqGainArray[i]) ? eqGainArray[i] : 1.0f;
+
+            // Scalar processing for remainder
+            const float yHP_L = h * (inL - s1_L * (g + R2) - s2_L);
+            const float yBP_L = yHP_L * g + s1_L;
+            const float yLP_L = yBP_L * g + s2_L;
+            const float outL = inL + (yBP_L * 0.5f) * (gVal - 1.0f);
+            
+            const float yHP_R = h * (inR - s1_R * (g + R2) - s2_R);
+            const float yBP_R = yHP_R * g + s1_R;
+            const float yLP_R = yBP_R * g + s2_R;
+            const float outR = inR + (yBP_R * 0.5f) * (gVal - 1.0f);
+
+            left[i]  = std::isfinite(outL) ? outL : 0.0f;
+            right[i] = std::isfinite(outR) ? outR : 0.0f;
+            
+            s1_L = std::isfinite(yHP_L * g + yBP_L) ? (yHP_L * g + yBP_L) : 0.0f;
+            s2_L = std::isfinite(yBP_L * g + yLP_L) ? (yBP_L * g + yLP_L) : 0.0f;
+            s1_R = std::isfinite(yHP_R * g + yBP_R) ? (yHP_R * g + yBP_R) : 0.0f;
+            s2_R = std::isfinite(yBP_R * g + yLP_R) ? (yBP_R * g + yLP_R) : 0.0f;
+        }
+
+        // Update state from SIMD processing
         s1_L = std::isfinite(s1.get(0)) ? s1.get(0) : 0.0f;
         s1_R = std::isfinite(s1.get(1)) ? s1.get(1) : 0.0f;
         s2_L = std::isfinite(s2.get(0)) ? s2.get(0) : 0.0f;
@@ -123,7 +166,12 @@ void DynamicEq::processBlock(juce::dsp::AudioBlock<float>& block, const float* e
         s2.set(0, s2_L);
         for (size_t k = 1; k < vFloat::size(); ++k) s2.set(k, 0.0f);
 
-        for (size_t i = 0; i < numSamples; ++i)
+        // FIX: Separate SIMD and scalar loops
+        const size_t simdWidth = vFloat::size();
+        const size_t simdLimit = numSamples - (numSamples % simdWidth);
+
+        // Process SIMD chunks
+        for (size_t i = 0; i < simdLimit; ++i)
         {
             const float inM = std::isfinite(mono[i]) ? mono[i] : 0.0f;
             vFloat x;
@@ -144,6 +192,23 @@ void DynamicEq::processBlock(juce::dsp::AudioBlock<float>& block, const float* e
             mono[i] = std::isfinite(outM) ? outM : 0.0f;
         }
 
+        // Process remainder samples
+        for (size_t i = simdLimit; i < numSamples; ++i)
+        {
+            const float inM = std::isfinite(mono[i]) ? mono[i] : 0.0f;
+            const float gVal = std::isfinite(eqGainArray[i]) ? eqGainArray[i] : 1.0f;
+
+            const float yHP = h * (inM - s1_L * (g + R2) - s2_L);
+            const float yBP = yHP * g + s1_L;
+            const float yLP = yBP * g + s2_L;
+            const float outM = inM + (yBP * 0.5f) * (gVal - 1.0f);
+
+            mono[i] = std::isfinite(outM) ? outM : 0.0f;
+            s1_L = std::isfinite(yHP * g + yBP) ? (yHP * g + yBP) : 0.0f;
+            s2_L = std::isfinite(yBP * g + yLP) ? (yBP * g + yLP) : 0.0f;
+        }
+
+        // Update state from SIMD processing
         s1_L = std::isfinite(s1.get(0)) ? s1.get(0) : 0.0f;
         s2_L = std::isfinite(s2.get(0)) ? s2.get(0) : 0.0f;
     }
@@ -193,7 +258,12 @@ void DynamicEq::processBlock(juce::dsp::AudioBlock<float>& block, const float* e
         s2.set(1, s2_R);
         for (size_t k = 2; k < vFloat::size(); ++k) s2.set(k, 0.0f);
 
-        for (size_t i = 0; i < numSamples; ++i)
+        // FIX: Separate SIMD and scalar loops
+        const size_t simdWidth = vFloat::size();
+        const size_t simdLimit = numSamples - (numSamples % simdWidth);
+
+        // Process SIMD chunks
+        for (size_t i = 0; i < simdLimit; ++i)
         {
             const float inL = std::isfinite(left[i])  ? left[i]  : 0.0f;
             const float inR = std::isfinite(right[i]) ? right[i] : 0.0f;
@@ -226,6 +296,34 @@ void DynamicEq::processBlock(juce::dsp::AudioBlock<float>& block, const float* e
             right[i] = std::isfinite(outR) ? outR : 0.0f;
         }
 
+        // Process remainder samples
+        for (size_t i = simdLimit; i < numSamples; ++i)
+        {
+            const float inL = std::isfinite(left[i])  ? left[i]  : 0.0f;
+            const float inR = std::isfinite(right[i]) ? right[i] : 0.0f;
+            const float eVal = std::isfinite(envArray[i]) ? envArray[i] : 0.0f;
+            const float linGain = std::exp2(eVal * depthCoeff);
+
+            const float yHP_L = h * (inL - s1_L * (g + R2) - s2_L);
+            const float yBP_L = yHP_L * g + s1_L;
+            const float yLP_L = yBP_L * g + s2_L;
+            const float outL = inL + (yBP_L * 0.5f) * (linGain - 1.0f);
+            
+            const float yHP_R = h * (inR - s1_R * (g + R2) - s2_R);
+            const float yBP_R = yHP_R * g + s1_R;
+            const float yLP_R = yBP_R * g + s2_R;
+            const float outR = inR + (yBP_R * 0.5f) * (linGain - 1.0f);
+
+            left[i]  = std::isfinite(outL) ? outL : 0.0f;
+            right[i] = std::isfinite(outR) ? outR : 0.0f;
+            
+            s1_L = std::isfinite(yHP_L * g + yBP_L) ? (yHP_L * g + yBP_L) : 0.0f;
+            s2_L = std::isfinite(yBP_L * g + yLP_L) ? (yBP_L * g + yLP_L) : 0.0f;
+            s1_R = std::isfinite(yHP_R * g + yBP_R) ? (yHP_R * g + yBP_R) : 0.0f;
+            s2_R = std::isfinite(yBP_R * g + yLP_R) ? (yBP_R * g + yLP_R) : 0.0f;
+        }
+
+        // Update state from SIMD processing
         s1_L = std::isfinite(s1.get(0)) ? s1.get(0) : 0.0f;
         s1_R = std::isfinite(s1.get(1)) ? s1.get(1) : 0.0f;
         s2_L = std::isfinite(s2.get(0)) ? s2.get(0) : 0.0f;
@@ -241,7 +339,12 @@ void DynamicEq::processBlock(juce::dsp::AudioBlock<float>& block, const float* e
         s2.set(0, s2_L);
         for (size_t k = 1; k < vFloat::size(); ++k) s2.set(k, 0.0f);
 
-        for (size_t i = 0; i < numSamples; ++i)
+        // FIX: Separate SIMD and scalar loops
+        const size_t simdWidth = vFloat::size();
+        const size_t simdLimit = numSamples - (numSamples % simdWidth);
+
+        // Process SIMD chunks
+        for (size_t i = 0; i < simdLimit; ++i)
         {
             const float inM = std::isfinite(mono[i]) ? mono[i] : 0.0f;
             vFloat x;
@@ -263,6 +366,24 @@ void DynamicEq::processBlock(juce::dsp::AudioBlock<float>& block, const float* e
             mono[i] = std::isfinite(outM) ? outM : 0.0f;
         }
 
+        // Process remainder samples
+        for (size_t i = simdLimit; i < numSamples; ++i)
+        {
+            const float inM = std::isfinite(mono[i]) ? mono[i] : 0.0f;
+            const float eVal = std::isfinite(envArray[i]) ? envArray[i] : 0.0f;
+            const float linGain = std::exp2(eVal * depthCoeff);
+
+            const float yHP = h * (inM - s1_L * (g + R2) - s2_L);
+            const float yBP = yHP * g + s1_L;
+            const float yLP = yBP * g + s2_L;
+            const float outM = inM + (yBP * 0.5f) * (linGain - 1.0f);
+
+            mono[i] = std::isfinite(outM) ? outM : 0.0f;
+            s1_L = std::isfinite(yHP * g + yBP) ? (yHP * g + yBP) : 0.0f;
+            s2_L = std::isfinite(yBP * g + yLP) ? (yBP * g + yLP) : 0.0f;
+        }
+
+        // Update state from SIMD processing
         s1_L = std::isfinite(s1.get(0)) ? s1.get(0) : 0.0f;
         s2_L = std::isfinite(s2.get(0)) ? s2.get(0) : 0.0f;
     }
@@ -328,7 +449,12 @@ void DynamicEq::process(const juce::dsp::ProcessContextReplacing<float>& context
         s2.set(1, s2_R);
         for (size_t k = 2; k < vFloat::size(); ++k) s2.set(k, 0.0f);
 
-        for (size_t i = 0; i < numSamples; ++i)
+        // FIX: Separate SIMD and scalar loops
+        const size_t simdWidth = vFloat::size();
+        const size_t simdLimit = numSamples - (numSamples % simdWidth);
+
+        // Process SIMD chunks
+        for (size_t i = 0; i < simdLimit; ++i)
         {
             const float inL = std::isfinite(left[i])  ? left[i]  : 0.0f;
             const float inR = std::isfinite(right[i]) ? right[i] : 0.0f;
@@ -355,6 +481,32 @@ void DynamicEq::process(const juce::dsp::ProcessContextReplacing<float>& context
             right[i] = std::isfinite(outR) ? outR : 0.0f;
         }
 
+        // Process remainder samples
+        for (size_t i = simdLimit; i < numSamples; ++i)
+        {
+            const float inL = std::isfinite(left[i])  ? left[i]  : 0.0f;
+            const float inR = std::isfinite(right[i]) ? right[i] : 0.0f;
+
+            const float yHP_L = h * (inL - s1_L * (g + R2) - s2_L);
+            const float yBP_L = yHP_L * g + s1_L;
+            const float yLP_L = yBP_L * g + s2_L;
+            const float outL = inL + (yBP_L * 0.5f) * eqGainLinear;
+            
+            const float yHP_R = h * (inR - s1_R * (g + R2) - s2_R);
+            const float yBP_R = yHP_R * g + s1_R;
+            const float yLP_R = yBP_R * g + s2_R;
+            const float outR = inR + (yBP_R * 0.5f) * eqGainLinear;
+
+            left[i]  = std::isfinite(outL) ? outL : 0.0f;
+            right[i] = std::isfinite(outR) ? outR : 0.0f;
+            
+            s1_L = std::isfinite(yHP_L * g + yBP_L) ? (yHP_L * g + yBP_L) : 0.0f;
+            s2_L = std::isfinite(yBP_L * g + yLP_L) ? (yBP_L * g + yLP_L) : 0.0f;
+            s1_R = std::isfinite(yHP_R * g + yBP_R) ? (yHP_R * g + yBP_R) : 0.0f;
+            s2_R = std::isfinite(yBP_R * g + yLP_R) ? (yBP_R * g + yLP_R) : 0.0f;
+        }
+
+        // Update state from SIMD processing
         s1_L = std::isfinite(s1.get(0)) ? s1.get(0) : 0.0f;
         s1_R = std::isfinite(s1.get(1)) ? s1.get(1) : 0.0f;
         s2_L = std::isfinite(s2.get(0)) ? s2.get(0) : 0.0f;

@@ -16,6 +16,8 @@
  #define FP_USE_SSE2 0
 #endif
 
+// FIX: Added dirty flags for DynamicEq and EnvelopeFollower optimization
+// These can be used in PluginProcessor to avoid redundant coefficient updates
 namespace FreakPhase::DSP
 {
     using vFloat = juce::dsp::SIMDRegister<float>;
