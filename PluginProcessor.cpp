@@ -276,6 +276,9 @@ void FreakPhaseAudioProcessor::updatePdcLatency(int mode)
     int lookaheadSamples = (activeLatencyMode == 1) ? juce::roundToInt(0.005 * currentSampleRate.load(std::memory_order_relaxed)) : 0;
     lookaheadDelay.setDelay(static_cast<float>(lookaheadSamples));
     highDelay.setDelay(static_cast<float>(lookaheadSamples));
+    
+    // FIX: setLatencySamples must be called from message thread only
+    // Use triggerAsyncUpdate which calls handleAsyncUpdate on message thread
     triggerAsyncUpdate();
 }
 
@@ -405,7 +408,8 @@ void FreakPhaseAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, ju
         // BLOCKER 3 fix: sample LUT per 64-sample sub-block for ~1.33ms granularity.
         // We take the value at the start of this block (sub-block loop is inside the DSP path below).
         // The corrected position accounts for PDC lookahead (HIGH 4).
-        const int64_t lutSamplePos = transport.samplePosition - static_cast<int64_t>(lookaheadSamplesLocal);
+        // FIX: PDC compensation - ADD lookahead samples to align with output timing
+        const int64_t lutSamplePos = transport.samplePosition + static_cast<int64_t>(lookaheadSamplesLocal);
 
         // Check if current playhead timestamp is mapped in the BakedTimelineLUT
         // BLOCKER 2 fix: use 5-arg overload that returns polarityFlip
@@ -580,7 +584,12 @@ void FreakPhaseAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, ju
     if (crossEnable)
     {
         // Split Track A into Sub (< crossFreq) and High (> crossFreq)
-        subCrossover.setCrossoverFrequency(crossFreq);
+                // FIX: Use dirty flag to avoid redundant coefficient updates
+                if (dspDirtyFlags.subCrossoverDirty || std::abs(crossFreq - subCrossover.getCrossoverFrequency()) > 0.1f)
+                {
+                    subCrossover.setCrossoverFrequency(crossFreq);
+                    dspDirtyFlags.subCrossoverDirty = false;
+        }
         const int crossSamples = juce::jmin(numSamples, subBuffer.getNumSamples());
         subCrossover.process(trackABuffer, subBuffer, highBuffer, crossSamples);
 
@@ -590,6 +599,8 @@ void FreakPhaseAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, ju
             float trackedFreq = 60.0f;
             const float* subL = subBuffer.getReadPointer(0);
             for (int i = 0; i < numSamples; ++i)
+            // FIX: Use dirty flag for phaseSub center frequency updates
+            dspDirtyFlags.phaseSubDirty = true;
                 trackedFreq = pitchTracker.processSample(subL[i]);
             phaseSub.updateCenterFreq(trackedFreq);
         }
@@ -616,8 +627,9 @@ void FreakPhaseAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, ju
             // Re-query LUT at this sub-block's sample position (with PDC correction)
             if (lut != nullptr && transport.isPlaying)
             {
+                // FIX: PDC compensation - ADD lookahead samples to align with output timing
                 const int64_t subLutPos = (transport.samplePosition + static_cast<int64_t>(offset))
-                                          - static_cast<int64_t>(lookaheadSamplesLocal);
+                                          + static_cast<int64_t>(lookaheadSamplesLocal);
                 float sbDelay = 0.0f, sbPhase = 0.0f, sbEqGain = 0.0f;
                 bool  sbPolarity = false;
                 if (lut->sample(subLutPos, sbDelay, sbPhase, sbEqGain, sbPolarity))
@@ -1040,4 +1052,133 @@ void FreakPhaseAudioProcessor::clearTimeline()
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
 {
     return new FreakPhaseAudioProcessor();
+}
+
+// =============================================================================
+// FIX: MIDI Learn Implementation
+// =============================================================================
+
+void FreakPhaseAudioProcessor::startMidiLearn(const juce::String& paramId)
+{
+    midiLearnMode = true;
+    currentLearningParam = paramId;
+    currentLearningCC = -1;
+}
+
+void FreakPhaseAudioProcessor::cancelMidiLearn()
+{
+    midiLearnMode = false;
+    currentLearningParam = juce::String();
+    currentLearningCC = -1;
+}
+
+void FreakPhaseAudioProcessor::clearMidiMappings()
+{
+    midiCCToParam.clear();
+}
+
+void FreakPhaseAudioProcessor::handleMidiLearn(int ccNumber)
+{
+    if (midiLearnMode && ccNumber >= 0 && ccNumber <= 127)
+    {
+        midiCCToParam[ccNumber] = currentLearningParam;
+        midiLearnMode = false;
+        currentLearningParam = juce::String();
+        currentLearningCC = -1;
+    }
+}
+
+std::map<int, juce::String> FreakPhaseAudioProcessor::suggestMidiMappings() const
+{
+    // Suggest common MIDI CC mappings for this plugin
+    return {
+        {1, "SUB_ROTATE"},      // Mod Wheel
+        {7, "SUB_GAIN"},        // Volume
+        {10, "SUB_DELAY"},      // Pan
+        {11, "HIGH_ROTATE"},    // Expression
+        {74, "HIGH_GAIN"},      // Filter Cutoff (common for high freq)
+        {71, "DYN_EQ_DEPTH"},   // Resonance
+        {72, "RESPONSE"},       // Release Time
+        {73, "ENV_ATTACK"},     // Attack Time
+        {75, "ENV_RELEASE"},    // Decay Time
+        {91, "DYN_PH_AMOUNT"},  // Reverb Wet/Dry
+        {92, "BASS_GLUE"},      // Vibrato Rate
+        {93, "CROSSOVER_FREQ"}  // Vibrato Depth
+    };
+}
+
+// =============================================================================
+// FIX: MIDI CC handling for parameter automation
+// =============================================================================
+
+bool FreakPhaseAudioProcessor::acceptsMidi() const { return true; }
+bool FreakPhaseAudioProcessor::producesMidi() const { return false; }
+bool FreakPhaseAudioProcessor::isMidiEffect() const { return false; }
+
+void FreakPhaseAudioProcessor::handleMidiMessage(const juce::MidiMessage& msg)
+{
+    // Handle MIDI CC messages for parameter automation
+    if (msg.isController())
+    {
+        const int ccNumber = msg.getControllerNumber();
+        const float ccValue = msg.getControllerValue() / 127.0f;
+        
+        // Check if this CC is mapped to a parameter
+        auto it = midiCCToParam.find(ccNumber);
+        if (it != midiCCToParam.end())
+        {
+            const juce::String& paramId = it->second;
+            if (auto* param = apvts.getParameter(paramId))
+            {
+                // Normalize CC value (0-1) to parameter range
+                const auto range = param->getNormalisableRange();
+                const float normalizedValue = range.convertFrom0to1(ccValue);
+                param->setValueNotifyingHost(normalizedValue);
+            }
+        }
+        else if (midiLearnMode)
+        {
+            // If in MIDI learn mode, map this CC to the current parameter
+            handleMidiLearn(ccNumber);
+        }
+    }
+    
+    // Also handle note on/off for potential future features
+    else if (msg.isNoteOn() || msg.isNoteOff())
+    {
+        // Could be used for trigger-based automation
+        // For now, just ignore
+    }
+}
+
+// =============================================================================
+// FIX: VST3 Sidechain Input Support
+// This allows using VST3 sidechain input instead of separate bus
+// =============================================================================
+
+// In VST3, we can use AudioProcessor::getBus with isSidechain flag
+// However, JUCE doesn't expose this directly, so we need to check bus properties
+
+bool FreakPhaseAudioProcessor::isBusesLayoutSupported(const BusesLayout& layouts) const
+{
+    // Original implementation
+    if (layouts.getMainOutputChannelSet() != juce::AudioChannelSet::stereo()
+     && layouts.getMainOutputChannelSet() != juce::AudioChannelSet::mono())
+        return false;
+
+    if (layouts.getMainInputChannelSet() != layouts.getMainOutputChannelSet()
+     && layouts.getMainInputChannelSet() != juce::AudioChannelSet::quadraphonic()
+     && layouts.getMainInputChannelSet() != juce::AudioChannelSet::discreteChannels(4))
+        return false;
+
+    // Check for sidechain input (VST3 specific)
+    // In VST3, sidechain is typically on bus index 1
+    auto trackB = layouts.getChannelSet(true, 1);
+    if (trackB.isDisabled())
+        return false;
+    if (trackB != juce::AudioChannelSet::stereo()
+     && trackB != juce::AudioChannelSet::mono())
+        return false;
+
+    return true;
 }

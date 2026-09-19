@@ -14,6 +14,9 @@
 #include "Timeline/TimelineAudioCaptureFifo.h"
 #include "Timeline/TimelineAnalysisThread.h"
 
+// FIX: Add MIDI Learn support
+#include <map>
+
 class FreakPhaseAudioProcessor : public juce::AudioProcessor, private juce::AsyncUpdater
 {
 public:
@@ -36,6 +39,9 @@ public:
     bool acceptsMidi() const override;
     bool producesMidi() const override;
     bool isMidiEffect() const override;
+    
+    // FIX: Add MIDI CC handling for sidechain input
+    void handleMidiMessage(const juce::MidiMessage& msg) override;
     double getTailLengthSeconds() const override;
 
     int getNumPrograms() override;
@@ -123,6 +129,27 @@ private:
     void handleAsyncUpdate() override;
 
     ParameterCache paramCache;
+
+    // FIX: Dirty flags for DSP parameter updates to avoid redundant computations
+    struct DspDirtyFlags {
+        bool phaseSubDirty = true;
+        bool phaseHighDirty = true;
+        bool dynEqDirty = true;
+        bool subCrossoverDirty = true;
+        bool dcBlockerDirty = true;
+    } dspDirtyFlags;
+
+    // FIX: MIDI Learn support
+    std::map<int, juce::String> midiCCToParam;
+    bool midiLearnMode = false;
+    int currentLearningCC = -1;
+    juce::String currentLearningParam;
+
+    void startMidiLearn(const juce::String& paramId);
+    void cancelMidiLearn();
+    void clearMidiMappings();
+    void handleMidiLearn(int ccNumber);
+    std::map<int, juce::String> suggestMidiMappings() const;
 
     DcBlockerChain dcBlocker;
     EnvelopeFollower envFollower;

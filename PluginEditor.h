@@ -58,6 +58,13 @@ private:
     void setupWebView();
     void pushWaveformEvent();
     void applySmartAlignParameters(float delayMs, float rotateDeg, bool flip, float gainDb, bool withGestures = true);
+    
+    // FIX: MIDI Learn handlers
+    void handleFrontendStartMidiLearn(const juce::var& data);
+    void handleFrontendCancelMidiLearn();
+    void handleFrontendClearMidiMappings();
+    void handleFrontendGetMidiMappings(juce::var& result);
+    void handleFrontendGetSuggestedMidiMappings(juce::var& result);
 
     FreakPhaseAudioProcessor& audioProcessor;
     PresetManager presetManager;

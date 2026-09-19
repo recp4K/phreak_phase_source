@@ -219,6 +219,15 @@ namespace FreakPhase::Timeline
                     ++it;
                 }
             }
+
+            // FIX: Prevent memory leak by enforcing maximum size on retiredQueue
+            // If queue grows too large (e.g., GUI thread not running), force cleanup of oldest entries
+            static constexpr size_t MAX_RETIRED_ENTRIES = 16;
+            while (retiredQueue.size() > MAX_RETIRED_ENTRIES)
+            {
+                delete retiredQueue.front().table;
+                retiredQueue.erase(retiredQueue.begin());
+            }
         }
 
     private:
@@ -240,7 +249,17 @@ namespace FreakPhase::Timeline
             auto* oldTable = activeLUT.exchange(newTable, std::memory_order_acq_rel);
 
             if (oldTable != nullptr)
+            {
+                // FIX: Check if we're about to exceed MAX_RETIRED_ENTRIES before adding
+                // This prevents unbounded growth if reclaimQuiescentTables hasn't run yet
+                if (retiredQueue.size() >= MAX_RETIRED_ENTRIES)
+                {
+                    // Force immediate cleanup of oldest entry to make room
+                    delete retiredQueue.front().table;
+                    retiredQueue.erase(retiredQueue.begin());
+                }
                 retiredQueue.push_back(RetiredEntry { oldTable, retireEpoch });
+            }
 
             reclaimQuiescentTables();
         }
